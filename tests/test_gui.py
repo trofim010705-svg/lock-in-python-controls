@@ -9,6 +9,7 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import gui_app as g
+from PyQt5.QtTest import QTest
 
 
 class RecordingDemo(g.DemoTransport):
@@ -114,6 +115,32 @@ class Commands(unittest.TestCase):
             else: sys.modules['lockin_7230_usb']=previous
 
 
+    def test_engineering_units_and_status_from_user_screenshot(self):
+        self.assertEqual(g.engineering(1e-8,'V'),'10 nV')
+        self.assertEqual(g.engineering(-2.5e-12,'A'),'-2.5 pA')
+        self.assertEqual(g.engineering(0,'V'),'0 V')
+        self.assertEqual(g.engineering(47092.28,'Hz',8),'47.09228 kHz')
+        warning=g.status_description(0x31,0x0c)
+        self.assertIn('X2',warning); self.assertIn('Y2',warning)
+        self.assertNotIn('входа',warning)
+        self.assertTrue(g.status_description(0x21,0).startswith('Норма'))
+
+    def test_fast_poll_caches_shared_queries_and_reads_full_status_trailer(self):
+        original=self.t.exchange
+        def exchange(cmd):
+            text,st,ov=original(cmd)
+            if cmd=='OF.': st,ov=0x31,0x0c
+            return text,st,ov
+        self.t.exchange=exchange
+        data=self.i.poll([(0,True),(0,True),(2,True),(3,True)])
+        for cmd in ('IMODE','REFMODE','X.'):
+            self.assertEqual(self.t.commands.count(cmd),1)
+        self.assertNotIn('ST',self.t.commands); self.assertNotIn('N',self.t.commands)
+        self.assertEqual(data['overload'],0x0c)
+        self.assertEqual(data['status'] & 0x30,0x30)
+        self.assertLessEqual(len(self.t.commands),8)
+
+
 class GUI(unittest.TestCase):
     @classmethod
     def setUpClass(cls): cls.app=g.QApplication.instance() or g.QApplication([])
@@ -124,21 +151,24 @@ class GUI(unittest.TestCase):
             if predicate(): return
             time.sleep(.002)
         self.fail('Timeout in Qt event loop')
+    def idle(self, window):
+        return not (window.busy or window.pending_jobs or window.pending_edits or window.edit_timer.isActive())
+
     def test_tabs_updates_thread_and_shutdown(self):
         args=argparse.Namespace(demo=True,serial=None,timeout=100,max_frequency=120000)
         w=g.LockinWindow(args); w.auto_poll.setChecked(False); w.show()
         failures=[]; w.worker.failed.connect(lambda *a:failures.append(a))
         try:
-            w.submit('open'); self.spin(lambda:w.connected and not w.busy)
+            w.submit('open'); self.spin(lambda:w.connected and self.idle(w))
             self.assertEqual(w.sections['Reference / Output 1'][0].widgets['sen1'].currentText(),'1 mV')
             for page in (1,2,3,0):
                 w.tabs.setCurrentIndex(page)
-                self.spin(lambda:not w.busy)
+                self.spin(lambda:self.idle(w))
                 self.assertIn(page,w.page_loaded)
             # Apply a real changed control through queued signals.
             box=w.sections['Reference / Output 1'][0]
             box.widgets['refp1'].setValue(25.5)
-            w.apply_section(box.title); self.spin(lambda:not w.busy)
+            self.spin(lambda:self.idle(w))
             self.assertEqual(w.worker.instrument.transport.data['REFP.'],'25.500')
             # Every hardware operation executes on a thread other than the GUI thread.
             transport=w.worker.instrument.transport
@@ -146,18 +176,19 @@ class GUI(unittest.TestCase):
             def recording(cmd):
                 tids.append(threading.get_ident()); return original(cmd)
             transport.exchange=recording
-            w.poll(); self.spin(lambda:not w.busy)
+            w.poll(); self.spin(lambda:self.idle(w))
             self.assertTrue(tids); self.assertNotIn(threading.get_ident(),tids)
             # Per-bit editor produces the same mask as the numeric control.
-            w.tabs.setCurrentIndex(2); self.spin(lambda:not w.busy)
+            w.tabs.setCurrentIndex(2); self.spin(lambda:self.idle(w))
             w.bit_controls[7][0].click()
             self.assertEqual(w.sections['Digital Port'][0].widgets['portdir'].value(),128)
+            self.spin(lambda:self.idle(w))
             self.assertFalse(failures,failures)
             # Simulate loss during polling, then prove a fresh connection works.
             transport.exchange=lambda cmd: (_ for _ in ()).throw(TimeoutError('USB unplugged'))
-            w.poll(); self.spin(lambda:not w.busy)
+            w.poll(); self.spin(lambda:self.idle(w))
             self.assertFalse(w.connected)
-            w.submit('open'); self.spin(lambda:w.connected and not w.busy)
+            w.submit('open'); self.spin(lambda:w.connected and self.idle(w))
             self.assertEqual(len(failures),1)
         finally:
             w.close(); self.spin(lambda:w.thread_stopped)
@@ -166,7 +197,7 @@ class GUI(unittest.TestCase):
     def test_close_during_usb_job_keeps_event_loop_alive(self):
         args=argparse.Namespace(demo=True,serial=None,timeout=100,max_frequency=120000)
         w=g.LockinWindow(args); w.auto_poll.setChecked(False); w.show()
-        w.submit('open'); self.spin(lambda:w.connected and not w.busy)
+        w.submit('open'); self.spin(lambda:w.connected and self.idle(w))
         transport=w.worker.instrument.transport
         original=transport.exchange
         def delayed(cmd):
@@ -179,5 +210,158 @@ class GUI(unittest.TestCase):
         timer.stop()
         self.assertGreater(len(pulses),5)
         self.assertFalse(w.thread.isRunning())
+
+    def window(self):
+        args=argparse.Namespace(demo=True,serial=None,timeout=100,max_frequency=120000)
+        w=g.LockinWindow(args); w.auto_poll.setChecked(False); w.show()
+        def close():
+            w.close(); self.spin(lambda:w.thread_stopped)
+        self.addCleanup(close)
+        w.submit('open'); self.spin(lambda:w.connected and self.idle(w))
+        return w
+
+    def test_numeric_entry_sends_only_when_finished_and_verifies_readback(self):
+        w=self.window()
+        self.assertEqual(w.interval.minimum(),10)
+        self.assertFalse(any(b.text()=='Применить' for b in w.findChildren(g.QPushButton)))
+        box=w.sections['Oscillator output'][0]; spin=box.widgets['oa']
+        w.tabs.currentWidget().ensureWidgetVisible(spin)
+        spin.setFocus()
+        QTest.keyClick(spin,g.Qt.Key_A,g.Qt.ControlModifier)
+        QTest.keyClicks(spin,'0.25')
+        QTest.qWait(230)
+        self.assertEqual(w.worker.instrument.transport.data['OA.'],'0.1')
+        QTest.keyClick(spin,g.Qt.Key_Return)
+        self.spin(lambda:self.idle(w))
+        self.assertEqual(w.worker.instrument.transport.data['OA.'],'0.250000')
+        for copy in w.sections[box.title]:
+            self.assertEqual(copy.widgets['oa'].value(),.25)
+            self.assertIn('✓',copy.field_status['oa'].text())
+
+    def test_popup_remains_open_across_poll_and_selection_is_saved(self):
+        w=self.window(); box=w.sections['Reference / Output 1'][0]
+        combo=box.widgets['sen1']
+        w.tabs.currentWidget().ensureWidgetVisible(combo)
+        combo.showPopup(); self.spin(lambda:combo.view().isVisible())
+        for _ in range(3):
+            w.poll()
+            self.assertTrue(w.busy); self.assertTrue(combo.isEnabled())
+            self.spin(lambda:self.idle(w))
+            self.assertTrue(combo.view().isVisible())
+        combo.hidePopup()
+        index=combo.findData(19); combo.setCurrentIndex(index); combo.activated[int].emit(index)
+        self.spin(lambda:self.idle(w))
+        self.assertEqual(w.worker.instrument.transport.data['SEN'],'19')
+        self.assertIn('✓',box.field_status['sen1'].text())
+
+    def test_newer_edit_is_not_overwritten_by_previous_write_response(self):
+        w=self.window(); box=w.sections['Reference / Output 1'][0]
+        transport=w.worker.instrument.transport; original=transport.exchange; writes=[]
+        def delayed(cmd):
+            if cmd.startswith('REFP. '): writes.append(cmd)
+            time.sleep(.008); return original(cmd)
+        transport.exchange=delayed
+        values_at_reply=[]
+        w.worker.result.connect(lambda job,data:values_at_reply.append(box.widgets['refp1'].value()) if job=='apply' else None)
+        box.widgets['refp1'].setValue(10)
+        self.spin(lambda:w.busy and w.inflight['job']=='apply')
+        box.widgets['refp1'].setValue(20)
+        self.spin(lambda:self.idle(w))
+        self.assertEqual(writes,['REFP. 10.000','REFP. 20.000'])
+        self.assertEqual(values_at_reply,[20,20])
+        self.assertEqual(box.widgets['refp1'].value(),20)
+        self.assertEqual(transport.data['REFP.'],'20.000')
+
+    def test_readback_preserves_open_popup_and_uncommitted_numeric_text(self):
+        w=self.window(); box=w.sections['Reference / Output 1'][0]
+        transport=w.worker.instrument.transport; original=transport.exchange
+        def delayed(cmd):
+            time.sleep(.008); return original(cmd)
+        transport.exchange=delayed
+        phase=box.widgets['refp1']; phase.setValue(10)
+        self.spin(lambda:w.busy and w.inflight['job']=='apply')
+        combo=box.widgets['sen1']
+        w.tabs.currentWidget().ensureWidgetVisible(combo)
+        combo.showPopup(); self.spin(lambda:combo.view().isVisible())
+        self.spin(lambda:self.idle(w))
+        self.assertTrue(combo.view().isVisible())
+        combo.hidePopup()
+        phase.setValue(11)
+        self.spin(lambda:w.busy and w.inflight['job']=='apply')
+        w.tabs.currentWidget().ensureWidgetVisible(phase); phase.setFocus()
+        QTest.keyClick(phase,g.Qt.Key_A,g.Qt.ControlModifier)
+        QTest.keyClicks(phase,'20')
+        self.spin(lambda:self.idle(w))
+        self.assertEqual(phase.lineEdit().text(),'20')
+        self.assertEqual(transport.data['REFP.'],'11.000')
+        QTest.keyClick(phase,g.Qt.Key_Return)
+        self.spin(lambda:self.idle(w))
+        self.assertEqual(transport.data['REFP.'],'20.000')
+
+    def test_rejected_and_clamped_settings_display_actual_instrument_values(self):
+        w=self.window(); box=w.sections['Reference / Output 1'][0]
+        combo=box.widgets['tc1']; index=combo.findData(0)
+        combo.setCurrentIndex(index); combo.activated[int].emit(index)
+        self.spin(lambda:self.idle(w))
+        self.assertTrue(w.connected)
+        self.assertEqual(combo.currentData(),9)
+        self.assertIn('Отклонено',box.field_status['tc1'].text())
+        self.assertIn('10 ms',box.field_status['tc1'].text())
+        transport=w.worker.instrument.transport; original=transport.exchange; writes=[]
+        def clamp(cmd):
+            if cmd=='SEN 19':
+                writes.append(cmd); transport.data['SEN']='18'; return '',1,0
+            return original(cmd)
+        transport.exchange=clamp
+        combo=box.widgets['sen1']; index=combo.findData(19)
+        combo.setCurrentIndex(index); combo.activated[int].emit(index)
+        self.spin(lambda:self.idle(w))
+        self.assertEqual(combo.currentData(),18)
+        self.assertEqual(writes,['SEN 19'])
+        self.assertIn('Прибор: 1 mV',box.field_status['sen1'].text())
+        self.assertNotIn('✓',box.field_status['sen1'].text())
+
+    def test_edit_during_poll_is_queued_before_next_poll(self):
+        w=self.window(); box=w.sections['Reference / Output 1'][0]
+        transport=w.worker.instrument.transport; original=transport.exchange; writes=[]
+        def delayed(cmd):
+            writes.append(cmd); time.sleep(.025); return original(cmd)
+        transport.exchange=delayed
+        w.poll(); self.assertTrue(w.busy)
+        box.widgets['refp1'].setValue(12)
+        self.assertEqual(len(w.pending_edits),1)
+        self.assertFalse(w.submit('poll'))
+        self.spin(lambda:self.idle(w))
+        self.assertEqual(transport.data['REFP.'],'12.000')
+        self.assertEqual(writes.count('REFP. 12.000'),1)
+        self.assertIn('✓',box.field_status['refp1'].text())
+
+    def test_disconnect_during_write_cancels_queued_refresh(self):
+        w=self.window(); failures=[]
+        w.worker.failed.connect(lambda *args:failures.append(args))
+        transport=w.worker.instrument.transport; original=transport.exchange
+        def delayed(cmd):
+            time.sleep(.008); return original(cmd)
+        transport.exchange=delayed
+        combo=w.sections['Input'][0].widgets['acgain']
+        combo.setCurrentIndex(1); combo.activated[int].emit(1)
+        self.spin(lambda:w.busy and w.inflight['job']=='apply')
+        w.submit('close')
+        self.spin(lambda:not w.connected and self.idle(w))
+        self.assertFalse(failures)
+        self.assertFalse(transport.opened)
+
+    def test_action_runs_after_automatic_write_and_readback(self):
+        w=self.window(); w.tabs.setCurrentIndex(1); self.spin(lambda:self.idle(w))
+        box=w.sections['Oscillator output'][1]
+        transport=w.worker.instrument.transport; original=transport.exchange; commands=[]
+        def record(cmd):
+            commands.append(cmd); return original(cmd)
+        transport.exchange=record
+        box.widgets['of'].setValue(1250)
+        w.action('sweep',mask=1)
+        self.spin(lambda:self.idle(w))
+        self.assertLess(commands.index('OF. 1250.000'),commands.index('SWEEP 1'))
+        self.assertTrue(any(c=='OF.' for c in commands[commands.index('OF. 1250.000')+1:commands.index('SWEEP 1')]))
 
 if __name__=='__main__': unittest.main(verbosity=2)

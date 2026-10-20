@@ -11,15 +11,53 @@ import math
 import re
 import sys
 import time
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from typing import Optional
 
-from PyQt5.QtCore import QObject, QThread, QTimer, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, QThread, QTimer, Qt, QSignalBlocker, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QGridLayout,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPlainTextEdit,
     QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
+
+
+def engineering(value, unit, significant=6):
+    """Readable SI units without exponent notation in normal instrument ranges."""
+    if not math.isfinite(value):
+        return '—'
+    if value == 0:
+        return '0 '+unit
+    for factor, prefix in [(1e12, 'T'), (1e9, 'G'), (1e6, 'M'), (1e3, 'k'),
+                           (1, ''), (1e-3, 'm'), (1e-6, 'µ'), (1e-9, 'n'),
+                           (1e-12, 'p'), (1e-15, 'f'), (1e-18, 'a')]:
+        if abs(value) >= factor * (1-1e-12) or factor == 1e-18:
+            scaled = value/factor
+            decimals = max(0, min(18, significant-1-math.floor(math.log10(abs(scaled)))))
+            text = f'{scaled:.{decimals}f}'
+            if '.' in text:
+                text = text.rstrip('0').rstrip('.')
+            return f'{text} {prefix}{unit}'
+
+
+def status_description(status, overload):
+    messages = []
+    if status & 2:
+        messages.append('Прибор отклонил команду')
+    if status & 4:
+        messages.append('Недопустимый параметр команды')
+    if status & 8:
+        messages.append('Нет захвата опорного сигнала')
+    if status & 64:
+        messages.append('Перегрузка входа')
+    channels = [name for bit, name in enumerate(('X1', 'Y1', 'X2', 'Y2', 'DAC1', 'DAC2', 'DAC3', 'DAC4'))
+                if overload & (1 << bit)]
+    if channels:
+        messages.append('Перегрузка: '+', '.join(channels))
+    elif status & 16:
+        messages.append('Перегрузка выхода')
+    return ' · '.join(messages) or 'Норма — перегрузки и потери захвата нет'
 
 
 class CommandError(Exception):
@@ -141,7 +179,7 @@ def schema(max_frequency):
                        choice('demod2', 'Demod2 source', 'DEMOD2SRC',
                               ['Signal channel ADC', 'Rear ADC1', 'Demod1 output'])],
         'Output filters / Noise': [choice('fast', 'Fast mode', 'FASTMODE', ['Off', 'On']),
-                       choice('sync', 'Synchronous', 'SYNC', ['Off', 'On', 'Auto (web firmware)'], legacy=True),
+                       choice('sync', 'Synchronous', 'SYNC', ['Off', 'On', 'Auto (web firmware)']),
                        choice('noise', 'Noise measurement', 'NOISEMODE', ['Off', 'On']),
                        choice('nnbuf', 'Noise buffer', 'NNBUF', ['Off', '1 s', '2 s', '3 s', '4 s'])],
         'Oscillator output': [number('oa', 'Amplitude, V rms', 'OA.', 0, 5, 6),
@@ -438,49 +476,57 @@ class Instrument:
         return completed
 
     def poll(self, selections, rear=False, oscillator=False):
-        self.mode = int(self.values('REFMODE')[0])
-        results, cache = [], {}
-        status = overload = 0
+        started = time.monotonic()
+        cache, results, status, overload = {}, [], 0, 0
+
+        def read(cmd):
+            nonlocal status, overload
+            if cmd not in cache:
+                cache[cmd] = self.values(cmd)[0]
+                status |= self.status
+                overload |= self.overload
+            return cache[cmd]
+
+        self.mode = int(read('REFMODE'))
+        imode = int(read('IMODE'))
         for code, physical in selections:
             if 4 <= code <= 7 and not self.mode:
                 results.append('— (канал 2 выключен)'); continue
-            if code == 8 and not int(self.values('NOISEMODE')[0]):
+            if code == 8 and not int(read('NOISEMODE')):
                 results.append('— (Noise mode выключен)'); continue
             if code > 8:
                 cmd, unit, scale = f'EQU {code-8}', '', 1
             elif code == 8:
-                cmd, unit, scale = ('NHZ.', 'V/√Hz' if not int(self.values('IMODE')[0]) else 'A/√Hz', 1) if physical else ('NN', '%', .01)
+                cmd, unit, scale = ('NHZ.', 'V/√Hz' if not imode else 'A/√Hz', 1) if physical else ('NN', '%', .01)
             else:
                 ch, base = (1 if code < 4 else 2), ['X', 'Y', 'MAG', 'PHA'][code % 4]
                 phase = base == 'PHA'
                 cmd = self.channel_command(base, ch) + ('.' if physical or phase else '')
-                unit = 'deg' if phase else ('V' if not int(self.values('IMODE')[0]) else 'A') if physical else '%'
+                unit = 'deg' if phase else ('V' if not imode else 'A') if physical else '%'
                 scale = 1 if physical or phase else .01
                 if not self.mode and not physical and base in ('X', 'Y'):
-                    ex = int(self.values('EX')[0])
-                    if ex & (1 if base == 'X' else 2):
+                    if int(read('EX')) & (1 if base == 'X' else 2):
                         scale /= 10
             try:
-                if cmd not in cache:
-                    cache[cmd] = self.values(cmd)[0]
-                results.append(f'{cache[cmd]*scale:.8g} {unit}'.strip())
+                value = read(cmd)*scale
+                results.append(engineering(value, unit) if unit in ('V', 'A', 'V/√Hz', 'A/√Hz')
+                               else f'{value:.8g} {unit}'.strip())
             except CommandError as exc:
+                status |= exc.status; overload |= exc.overload
                 results.append(str(exc))
-            status |= self.status; overload |= self.overload
-        freq = [self.values(self.channel_command('FRQ', ch)+'.')[0]
-                for ch in range(1, 3 if self.mode else 2)]
-        status |= self.status; overload |= self.overload
-        # ST preserves all bits, unlike the mask in the supplied low-level helper.
-        status |= int(self.values('ST')[0]); overload |= int(self.values('N')[0])
+        freq = [read(self.channel_command('FRQ', ch)+'.') for ch in range(1, 3 if self.mode else 2)]
         extras = {}
         if rear:
-            extras = {f'adc{i}': self.values(f'ADC. {i}')[0] for i in range(1, 5)}
-            extras['readbyte'] = self.values('READBYTE')[0]
+            extras = {f'adc{i}': read(f'ADC. {i}') for i in range(1, 5)}
+            extras['readbyte'] = read('READBYTE')
         if oscillator and not self.mode:
-            extras['sweep'] = int(self.values('SWEEP')[0])
+            extras['sweep'] = int(read('SWEEP'))
+        oscillator_values = [read('OA.'), read('OF.')]
+        # Every reply already carries the complete binary status and overload bytes.
+        # No redundant ST/N or repeated IMODE queries are needed in this cycle.
         return {'readings': results, 'frequency': freq, 'mode': self.mode, 'extras': extras,
-                'status': status, 'overload': overload,
-                'oscillator': [self.values('OA.')[0], self.values('OF.')[0]]}
+                'status': status, 'overload': overload, 'oscillator': oscillator_values,
+                'elapsed_ms': (time.monotonic()-started)*1000}
 
 
 class DemoTransport:
@@ -597,9 +643,14 @@ class Worker(QObject):
                 self.result.emit(job, data)
             elif job == 'apply':
                 title = payload['title']
-                completed = inst.apply(title, payload['values'], set(payload['changed']))
+                error, completed = '', []
+                try:
+                    completed = inst.apply(title, payload['values'], set(payload['changed']))
+                except (ValueError, CommandError) as exc:
+                    error = str(exc)
+                # Acceptance is established by actual readback, not by echoing the editor.
                 data = inst.read_section(title)
-                data['completed'] = completed
+                data['completed'], data['error'] = completed, error
                 self.result.emit(job, {title: data})
             elif job == 'poll':
                 self.result.emit(job, inst.poll(payload['selections'], payload.get('rear', False), payload.get('oscillator', False)))
@@ -693,58 +744,149 @@ class Worker(QObject):
 
 
 class Section(QGroupBox):
-    apply_requested = pyqtSignal(str)
+    edit_requested = pyqtSignal(str)
 
     def __init__(self, title, fields):
         super().__init__(title)
         self.fields, self.widgets, self.baseline = fields, {}, {}
-        self.available = set()
+        self.available, self.edits, self.revisions = set(), {}, {}
+        self.field_status, self.deferred = {}, set()
         self.title = title
+        self.reconcile_timer = QTimer(self)
+        self.reconcile_timer.setInterval(100)
+        self.reconcile_timer.timeout.connect(self.reconcile)
         grid = QGridLayout(self)
         for row, f in enumerate(fields):
             w = QComboBox() if f.choices or f.key.startswith('sen') else QDoubleSpinBox()
             if isinstance(w, QComboBox):
                 for label, value in f.choices:
                     w.addItem(label, value)
+                w.activated.connect(lambda index, key=f.key: self.queue_change(key))
             else:
                 w.setDecimals(f.decimals); w.setRange(f.low, f.high)
                 w.setSingleStep(10 ** (-f.decimals) if f.decimals else 1)
                 w.setKeyboardTracking(False)
-            w.setMinimumWidth(200)
+                w.valueChanged.connect(lambda value, key=f.key: self.queue_change(key))
+                w.editingFinished.connect(lambda key=f.key: self.queue_change(key))
+            w.setMinimumWidth(155)
             w.setToolTip(f.command + (' — web firmware, не описано в PDF' if f.legacy else ''))
             self.widgets[f.key] = w
-            grid.addWidget(QLabel(f.label), row, 0); grid.addWidget(w, row, 1)
-        self.apply_button = QPushButton('Применить')
-        self.apply_button.clicked.connect(lambda: self.apply_requested.emit(title))
-        grid.addWidget(self.apply_button, len(fields), 1)
+            badge = QLabel('—'); badge.setWordWrap(True); badge.setMinimumWidth(100)
+            badge.setMaximumWidth(165); badge.setObjectName('fieldStatus')
+            self.field_status[f.key] = badge
+            label = QLabel(f.label); label.setWordWrap(True)
+            grid.addWidget(label, row, 0); grid.addWidget(w, row, 1); grid.addWidget(badge, row, 2)
         self.note = QLabel('Параметры ещё не прочитаны')
         self.note.setWordWrap(True)
-        grid.addWidget(self.note, len(fields)+1, 0, 1, 2)
+        grid.addWidget(self.note, len(fields), 0, 1, 3)
 
     def values(self):
         return {k: w.currentData() if isinstance(w, QComboBox) else w.value()
                 for k, w in self.widgets.items()}
 
-    def changed(self):
-        return [k for k, v in self.values().items() if k in self.available and
-                k in self.baseline and v != self.baseline[k]]
+    def queue_change(self, key):
+        if key not in self.available or not self.widgets[key].isEnabled():
+            return
+        value = self.values()[key]
+        if key in self.edits and self.edits[key] == value:
+            return
+        if key not in self.edits and value == self.baseline.get(key):
+            return
+        self.edits[key] = value
+        self.revisions[key] = self.revisions.get(key, 0)+1
+        self.set_status(key, 'Ожидает записи…', '#9a6700')
+        self.note.setText('Запись выполняется автоматически после завершения ввода.')
+        self.edit_requested.emit(self.title)
 
-    def load(self, data):
+    def changed(self):
+        return [k for k, v in self.edits.items() if k in self.available and v != self.baseline.get(k)]
+
+    def display_value(self, key, value):
+        w = self.widgets[key]
+        if isinstance(w, QComboBox):
+            index = w.findData(int(value))
+            return w.itemText(index) if index >= 0 else str(int(value))
+        f = next(f for f in self.fields if f.key == key)
+        return f'{value:.{f.decimals}f}'.rstrip('0').rstrip('.') if f.decimals else str(int(value))
+
+    def set_status(self, key, text, color='#526277', detail=''):
+        label = self.field_status[key]
+        label.setText(text); label.setStyleSheet('color: '+color+'; font-size: 11px;')
+        label.setToolTip(detail or text)
+
+    def editor_active(self, key):
+        w = self.widgets[key]
+        if isinstance(w, QComboBox):
+            return w.view().isVisible()
+        return w.hasFocus() and w.lineEdit().isModified()
+
+    def set_value(self, key, value):
+        w = self.widgets[key]
+        blocker = QSignalBlocker(w)
+        if isinstance(w, QComboBox):
+            index = w.findData(int(value))
+            if index < 0:
+                w.addItem(f'Код {int(value)} (прибор)', int(value)); index = w.count()-1
+            w.setCurrentIndex(index)
+        else:
+            f = next(f for f in self.fields if f.key == key)
+            w.setRange(min(f.low, value), max(f.high, value)); w.setValue(value)
+        del blocker
+
+    def load(self, data, sent=None, versions=None):
+        sent, versions = sent or {}, versions or {}
         self.available = set(data['values'])
+        errors = []
         for f in self.fields:
-            if f.key not in self.available:
+            key = f.key
+            latest = key in versions and self.revisions.get(key) == versions[key]
+            if latest:
+                self.edits.pop(key, None)
+            if key not in data['values']:
+                if key in self.edits:
+                    self.edits.pop(key)
+                    self.set_status(key, 'Недоступно', '#9a6700', 'Настройка недоступна в текущем режиме или прошивке')
+                if key in sent:
+                    self.set_status(key, 'Не подтверждено', '#b42318', data.get('error') or 'Нет ответа на запрос значения')
+                    errors.append(f.label+': нет подтверждения')
                 continue
-            value, w = data['values'][f.key], self.widgets[f.key]
-            if isinstance(w, QComboBox):
-                index = w.findData(int(value))
-                if index < 0:
-                    w.addItem(f'Код {int(value)} (прибор)', int(value)); index = w.count()-1
-                w.setCurrentIndex(index)
+            actual = data['values'][key]
+            self.baseline[key] = actual
+            if key not in self.edits:
+                if self.editor_active(key):
+                    self.deferred.add(key); self.reconcile_timer.start()
+                else:
+                    self.set_value(key, actual)
+            if key in self.edits:
+                self.set_status(key, 'Ожидает записи…', '#9a6700', 'Сейчас на приборе: '+self.display_value(key, actual))
+            elif key in sent:
+                tolerance = 0 if isinstance(self.widgets[key], QComboBox) else .51 * 10**(-f.decimals)
+                matches = abs(actual-sent[key]) <= tolerance
+                actual_text = self.display_value(key, actual)
+                detail = f'Запрошено: {self.display_value(key, sent[key])}; прибор: {actual_text}'
+                if data.get('error') and not matches:
+                    self.set_status(key, 'Отклонено · '+actual_text, '#b42318', detail+'\n'+data['error'])
+                    errors.append(f.label+': запись отклонена')
+                elif matches:
+                    self.set_status(key, '✓ '+actual_text, '#147d59', detail)
+                else:
+                    self.set_status(key, 'Прибор: '+actual_text, '#b45309', detail)
+                    errors.append(f.label+': прибор установил другое значение')
             else:
-                # Preserve valid firmware values outside the supplied page's old ranges.
-                w.setRange(min(f.low, value), max(f.high, value)); w.setValue(value)
-        self.baseline = self.values()
-        self.note.setText('\n'.join(data['warnings']) or 'Прочитано с прибора')
+                self.set_status(key, 'Прибор: '+self.display_value(key, actual))
+        self.note.setText('\n'.join([data.get('error', '')]+data['warnings']+errors).strip()
+                          or ('✓ Настройки проверены чтением с прибора' if sent else 'Прочитано с прибора'))
+
+    def reconcile(self):
+        for key in list(self.deferred):
+            if key in self.edits:
+                self.deferred.remove(key)
+            elif not self.editor_active(key):
+                if key in self.baseline:
+                    self.set_value(key, self.baseline[key])
+                self.deferred.remove(key)
+        if not self.deferred:
+            self.reconcile_timer.stop()
 
     def enable_fields(self, connected, mode, legacy):
         for f in self.fields:
@@ -757,7 +899,6 @@ class Section(QGroupBox):
             if f.key == 'ie2' and mode == 1:
                 enabled = False
             self.widgets[f.key].setEnabled(enabled)
-        self.apply_button.setEnabled(connected and bool(self.available))
 
 
 class LockinWindow(QMainWindow):
@@ -772,10 +913,25 @@ class LockinWindow(QMainWindow):
         self.connected = self.busy = self.closing = self.thread_stopped = False
         self.mode = 0
         self.page_loaded = set()
-        self.pending_refresh = False
+        self.pending_jobs, self.pending_edits = deque(), OrderedDict()
+        self.inflight = None
+        self.last_input_mode = self.last_poll_started = None
         self.active_title = None
+        self.edit_timer = QTimer(self); self.edit_timer.setSingleShot(True)
+        self.edit_timer.setInterval(180); self.edit_timer.timeout.connect(self.dispatch_next)
         self.setWindowTitle('Signal Recovery 7230 — '+('DEMO' if args.demo else 'USB'))
-        self.resize(1150, 900)
+        self.resize(1400, 1000)
+        self.setStyleSheet("""
+            QMainWindow { background: #f3f6fb; }
+            QGroupBox { background: white; border: 1px solid #d9e2ef; border-radius: 8px;
+                        margin-top: 10px; padding: 14px 8px 8px; font-weight: 600; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #294263; }
+            QGroupBox#measurementCard { background: #ffffff; border: 1px solid #b9cfe7;
+                                       margin-top: 0; padding: 12px; }
+            QComboBox, QDoubleSpinBox, QSpinBox, QLineEdit { min-height: 25px; }
+            QTabBar::tab { padding: 9px 16px; }
+            QPushButton { padding: 6px 12px; }
+        """)
         root = QWidget(); self.setCentralWidget(root); layout = QVBoxLayout(root)
         bar = QHBoxLayout(); layout.addLayout(bar)
         self.connect_button = QPushButton('Подключиться')
@@ -787,7 +943,8 @@ class LockinWindow(QMainWindow):
         for w in (self.connect_button, self.disconnect_button, self.refresh_button):
             bar.addWidget(w)
         self.auto_poll = QCheckBox('Опрос'); self.auto_poll.setChecked(True)
-        self.interval = QSpinBox(); self.interval.setRange(250, 60000); self.interval.setValue(1000)
+        self.interval = QSpinBox(); self.interval.setRange(10, 60000); self.interval.setValue(100)
+        self.interval.setToolTip("Пауза после цикла чтения, минимум 10 ms. Реальный период зависит от USB.")
         bar.addWidget(self.auto_poll); bar.addWidget(QLabel('Интервал, мс')); bar.addWidget(self.interval)
         self.legacy = QCheckBox('Web-команды прошивки (не гарантированы PDF)')
         self.legacy.setToolTip('Разрешить SYNC 2, VRSEARCH и SOA из HTML; поддержка USB не гарантирована PDF.')
@@ -795,18 +952,22 @@ class LockinWindow(QMainWindow):
         self.connection_label = QLabel('Не подключено')
         layout.addWidget(self.connection_label)
         self.reading_controls = []
-        read_grid = QGridLayout(); layout.addLayout(read_grid)
+        read_grid = QGridLayout(); read_grid.setSpacing(10); layout.addLayout(read_grid)
         labels = ['X1', 'Y1', 'Magnitude1', 'Phase1', 'X2', 'Y2', 'Magnitude2', 'Phase2', 'Noise1', 'Equation1', 'Equation2']
         for col, default in enumerate((2, 3, 6, 7)):
-            selector, physical, value = QComboBox(), QCheckBox('Units'), QLabel('—')
+            card = QGroupBox(); card.setObjectName('measurementCard')
+            card_layout = QVBoxLayout(card)
+            selector, physical, value = QComboBox(), QCheckBox('Физические единицы'), QLabel('—')
             selector.addItems(labels); selector.setCurrentIndex(default); physical.setChecked(True)
-            value.setStyleSheet('font-size: 18px; font-weight: bold;')
+            value.setStyleSheet('font-size: 36px; font-weight: 600; color: #123c60;')
+            value.setMinimumHeight(70); value.setWordWrap(True)
             value.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            read_grid.addWidget(selector, 0, col); read_grid.addWidget(physical, 1, col)
-            read_grid.addWidget(value, 2, col)
+            card_layout.addWidget(selector); card_layout.addWidget(value); card_layout.addWidget(physical)
+            read_grid.addWidget(card, 0, col)
             self.reading_controls.append((selector, physical, value))
         self.live_label = QLabel('ST: — | Overload: — | Reference: —')
-        self.live_label.setWordWrap(True); layout.addWidget(self.live_label)
+        self.live_label.setWordWrap(True); self.live_label.setMinimumHeight(64); layout.addWidget(self.live_label)
+        self.timing_label = QLabel('Время USB-цикла: —'); layout.addWidget(self.timing_label)
         self.tabs = QTabWidget(); layout.addWidget(self.tabs)
         self.page_titles = [
             ['Input', 'Demodulator', 'Reference / Output 1', 'Reference / Output 2', 'Output filters / Noise', 'Oscillator output'],
@@ -821,15 +982,18 @@ class LockinWindow(QMainWindow):
             grid = QGridLayout(content); boxes = []
             for i, title in enumerate(self.page_titles[page]):
                 box = Section(title, self.sections_data[title]); boxes.append(box)
-                self.sections.setdefault(title, []).append(box)
-                box.apply_requested.connect(self.apply_section)
+                copies = self.sections.setdefault(title, [])
+                if copies:
+                    box.baseline, box.edits, box.revisions = copies[0].baseline, copies[0].edits, copies[0].revisions
+                copies.append(box)
+                box.edit_requested.connect(lambda name, b=box: self.queue_section(b))
                 grid.addWidget(box, i//2, i%2, alignment=Qt.AlignTop)
                 if title.startswith('Reference / Output'):
                     ch = int(title[-1]); row = QHBoxLayout()
                     for text, action in [('+90°', 'plus90'), ('Auto Phase', 'AQN'), ('Auto Sen', 'AS'), ('Auto Offset', 'AXO')]:
                         b = QPushButton(text); row.addWidget(b)
                         b.clicked.connect(lambda checked=False, a=action, c=ch: self.action(a, c))
-                    box.layout().addLayout(row, len(box.fields)+2, 0, 1, 2)
+                    box.layout().addLayout(row, len(box.fields)+1, 0, 1, 3)
             self.page_sections.append(boxes)
             extra = QGroupBox(); el = QVBoxLayout(extra)
             grid.addWidget(extra, (len(boxes)+1)//2, 0, 1, 2)
@@ -845,7 +1009,7 @@ class LockinWindow(QMainWindow):
                 self.start_button = QPushButton('Start sweep'); self.stop_button = QPushButton('Stop sweep')
                 row.addWidget(self.start_button); row.addWidget(self.stop_button)
                 self.start_button.clicked.connect(self.start_sweep); self.stop_button.clicked.connect(lambda: self.action('stop'))
-                el.addWidget(QLabel('Сначала примените параметры развёртки. Armed выбирает канал запуска и хранится в GUI.'))
+                el.addWidget(QLabel('Параметры записываются автоматически. Armed выбирает канал развёртки для Start.'))
             elif page == 2:
                 self.digital_label = QLabel('D7…D0: —'); el.addWidget(self.digital_label)
                 self.build_digital_bits(el)
@@ -870,6 +1034,7 @@ class LockinWindow(QMainWindow):
         self.poll_timer = QTimer(self); self.poll_timer.setSingleShot(True)
         self.poll_timer.timeout.connect(self.poll)
         self.auto_poll.toggled.connect(self.schedule_poll)
+        self.interval.valueChanged.connect(self.schedule_poll)
         self.tabs.currentChanged.connect(self.page_changed)
         self.thread = QThread(self)
         self.worker = Worker(args.demo, args.serial, args.timeout, self.sections_data, args.max_frequency)
@@ -910,12 +1075,16 @@ class LockinWindow(QMainWindow):
                         if controls[index].isChecked())
             w = mask_box.widgets[key]
             w.blockSignals(True); w.setValue(value); w.blockSignals(False)
+            mask_box.queue_change(key)
         self.update_digital_bits()
 
     def all_boxes(self):
         return [b for boxes in self.sections.values() for b in boxes]
 
     def sensitivity_choices(self, input_mode):
+        if input_mode == self.last_input_mode:
+            return
+        self.last_input_mode = input_mode
         imode = max(0, input_mode-3)
         for ch in (1, 2):
             for box in self.sections[f'Reference / Output {ch}']:
@@ -931,60 +1100,117 @@ class LockinWindow(QMainWindow):
                 next(f for f in box.fields if f.key == f'sen{ch}').choices = [
                     (w.itemText(i), w.itemData(i)) for i in range(w.count())]
 
-    @staticmethod
-    def engineering(value, unit):
-        for factor, prefix in [(1, ''), (1e-3, 'm'), (1e-6, 'µ'), (1e-9, 'n'), (1e-12, 'p'), (1e-15, 'f')]:
-            if abs(value) >= factor*.999 or factor == 1e-15:
-                return f'{value/factor:.5g} {prefix}{unit}'
+    engineering = staticmethod(engineering)
 
     def update_enabled(self):
-        ready = self.connected and not self.busy and not self.closing
+        ready = self.connected and not self.closing
         self.connect_button.setEnabled(not self.connected and not self.busy and not self.closing)
         self.disconnect_button.setEnabled(ready); self.refresh_button.setEnabled(ready)
+        # Polls and writes never disable editors: this used to dismiss open menus.
         self.tabs.setEnabled(ready)
         for box in self.all_boxes():
             box.enable_fields(ready, self.mode, self.legacy.isChecked())
 
     def submit(self, job, payload=None):
-        if self.busy or self.closing or (job != 'open' and not self.connected):
+        if self.closing or (job != 'open' and not self.connected):
             return False
-        self.poll_timer.stop(); self.busy = True
-        data = dict(payload or {}); data['legacy'] = self.legacy.isChecked()
-        self.update_enabled(); self.request.emit(job, data)
+        data = dict(payload or {})
+        if job == 'poll':
+            if self.busy or self.pending_jobs or self.pending_edits or self.edit_timer.isActive():
+                return False
+            self.start_job(job, data)
+            return True
+        if job == 'close':
+            self.edit_timer.stop(); self.pending_edits.clear(); self.pending_jobs.clear()
+            for box in self.all_boxes():
+                box.edits.clear()
+            self.pending_jobs.appendleft((job, data))
+        elif job != 'read' or not any(j == 'read' and p == data for j, p in self.pending_jobs):
+            self.pending_jobs.append((job, data))
+        self.dispatch_next()
         return True
 
+    def start_job(self, job, payload, box=None):
+        self.poll_timer.stop(); self.busy = True
+        data = dict(payload); data['legacy'] = self.legacy.isChecked()
+        self.inflight = {'job': job, 'payload': data, 'box': box}
+        if job == 'poll':
+            now = time.monotonic()
+            self.inflight['period_ms'] = (now-self.last_poll_started)*1000 if self.last_poll_started else None
+            self.last_poll_started = now
+        else:
+            self.update_enabled()
+        self.request.emit(job, data)
+
+    def queue_section(self, box):
+        if not self.connected or self.closing:
+            return
+        self.pending_edits[box.title] = box
+        for copy in self.sections[box.title]:
+            for key, value in box.edits.items():
+                copy.set_status(key, 'Ожидает записи…', '#9a6700')
+                if copy is not box and not copy.editor_active(key):
+                    copy.set_value(key, value)
+        self.poll_timer.stop()
+        self.edit_timer.start()
+
+    def dispatch_next(self):
+        if self.busy or self.closing:
+            return
+        if self.pending_jobs and self.pending_jobs[0][0] == 'close':
+            job, data = self.pending_jobs.popleft(); self.start_job(job, data); return
+        if self.pending_edits:
+            if self.edit_timer.isActive():
+                return
+            title, box = self.pending_edits.popitem(last=False)
+            changed = box.changed()
+            if changed:
+                values = box.values(); values.update(box.baseline); values.update(box.edits)
+                versions = {key: box.revisions[key] for key in changed}
+                for copy in self.sections[title]:
+                    for key in changed:
+                        copy.set_status(key, 'Запись / проверка…', '#1768a4')
+                self.active_title = title
+                self.start_job('apply', {'title': title, 'values': values, 'changed': changed,
+                                         'versions': versions}, box)
+                return
+            for key in list(box.edits):
+                if box.edits[key] == box.baseline.get(key):
+                    box.edits.pop(key)
+                    for copy in self.sections[title]:
+                        copy.set_status(key, '✓ '+copy.display_value(key, box.baseline[key]), '#147d59')
+            self.dispatch_next(); return
+        if self.pending_jobs:
+            job, data = self.pending_jobs.popleft(); self.start_job(job, data); return
+        self.schedule_poll()
+
     def refresh(self):
-        titles = self.page_titles[self.tabs.currentIndex()]
-        self.submit('read', {'titles': titles})
+        self.submit('read', {'titles': self.page_titles[self.tabs.currentIndex()]})
 
     def page_changed(self, page):
-        if self.connected and not self.busy:
+        if self.connected:
             if page not in self.page_loaded:
                 self.refresh()
             else:
                 self.schedule_poll()
 
     def legacy_changed(self):
-        self.page_loaded.clear()
-        self.update_enabled()
-        if self.connected and not self.busy:
+        self.page_loaded.clear(); self.update_enabled()
+        if self.connected:
             self.refresh()
 
     def apply_section(self, title):
+        # Kept as a programmatic convenience; the GUI has no Apply button.
         box = next(b for b in self.page_sections[self.tabs.currentIndex()] if b.title == title)
-        changed = box.changed()
-        if not changed:
-            self.statusBar().showMessage('Изменений нет'); return
-        self.active_title = title
-        self.submit('apply', {'title': title, 'values': box.values(), 'changed': changed})
+        for key, value in box.values().items():
+            if key in box.available and value != box.baseline.get(key):
+                box.queue_change(key)
 
     def action(self, action, channel=1, **kwargs):
+        # Pending edits always finish before the queued action, e.g. sweep start.
         self.submit('action', dict(action=action, channel=channel, **kwargs))
 
     def start_sweep(self):
-        box = self.sections['Frequency / Amplitude Sweep'][0]
-        if box.changed():
-            self.statusBar().showMessage('Сначала нажмите «Применить» для параметров развёртки'); return
         mask = int(self.arm_frequency.isChecked()) + 2*int(self.arm_amplitude.isChecked())
         self.action('sweep', mask=mask)
 
@@ -992,7 +1218,8 @@ class LockinWindow(QMainWindow):
         self.submit('raw', {'command': self.command_input.text()})
 
     def schedule_poll(self, *unused):
-        if self.connected and not self.busy and not self.closing and self.auto_poll.isChecked():
+        if (self.connected and not self.busy and not self.closing and self.auto_poll.isChecked()
+                and not self.pending_jobs and not self.pending_edits and not self.edit_timer.isActive()):
             self.poll_timer.start(self.interval.value())
         else:
             self.poll_timer.stop()
@@ -1003,80 +1230,114 @@ class LockinWindow(QMainWindow):
 
     @pyqtSlot(str, object)
     def on_result(self, job, data):
-        self.busy = False
+        context = self.inflight or {'payload': {}}
+        self.busy = False; self.inflight = None
         if self.closing:
             return
         if job == 'open':
-            self.connected = True; self.page_loaded.clear()
+            self.connected = True; self.page_loaded.clear(); self.last_poll_started = None
             self.connection_label.setText('Подключено — firmware: '+data['version'])
             self.log.appendPlainText('Соединение открыто. Режим демодуляции не изменён.')
             self.refresh(); return
         if job == 'close':
-            self.connected = False; self.page_loaded.clear()
+            self.pending_jobs.clear(); self.pending_edits.clear(); self.edit_timer.stop()
+            self.connected = False; self.page_loaded.clear(); self.clear_readings()
             self.connection_label.setText('Отключено')
-            self.clear_readings()
         elif job in ('read', 'apply'):
             for title, state in data.items():
                 self.mode = state['mode']
                 if title == 'Input' and 'input' in state['values']:
                     self.sensitivity_choices(int(state['values']['input']))
-                if title.startswith('Reference / Output') and not self.sections[title][0].widgets[f'sen{title[-1]}'].count():
-                    self.sensitivity_choices(1)
+                payload = context['payload']
+                sent = {key: payload['values'][key] for key in payload['changed']} if job == 'apply' else {}
+                versions = payload.get('versions', {})
                 for box in self.sections[title]:
-                    box.load(state)
+                    box.load(state, sent, versions)
                 if state['warnings']:
                     self.log.appendPlainText('\n'.join(state['warnings']))
+                if state.get('error'):
+                    self.log.appendPlainText('Запись отклонена: '+state['error'])
+                    self.statusBar().showMessage(state['error'])
+                    # Dependent actions must not run after a rejected setting.
+                    self.pending_jobs = deque((j, p) for j, p in self.pending_jobs if j != 'action')
                 if state.get('completed'):
                     self.log.appendPlainText('\n'.join('→ '+c for c in state['completed']))
             if job == 'read':
-                self.page_loaded.add(self.tabs.currentIndex())
+                titles = context['payload'].get('titles')
+                for page, expected in enumerate(self.page_titles):
+                    if titles == expected:
+                        self.page_loaded.add(page)
+            else:
+                self.page_loaded.clear()
+                if context['payload']['title'] in ('Input', 'Demodulator', 'Output filters / Noise'):
+                    # Refresh dependent fields, preserving any newer edits in Section.load.
+                    self.pending_jobs.append(('read', {'titles': self.page_titles[self.tabs.currentIndex()]}))
             self.update_derived()
         elif job == 'poll':
-            if data['mode'] != self.mode:
+            mode_changed = data['mode'] != self.mode
+            if mode_changed:
                 self.mode = data['mode']; self.page_loaded.clear()
                 self.log.appendPlainText('Режим прибора изменился. Перечитайте текущую вкладку.')
-            for (_, _, label), value in zip(self.reading_controls, data['readings']):
-                label.setText(value)
+            sent_selections = context['payload'].get('selections', [])
+            for index, ((selector, units, label), value) in enumerate(zip(self.reading_controls, data['readings'])):
+                if index < len(sent_selections) and (selector.currentIndex(), units.isChecked()) == tuple(sent_selections[index]):
+                    label.setText(value)
+                    code = selector.currentIndex()
+                    bitmask = {0: 1, 1: 2, 2: 3, 3: 3, 4: 4, 5: 8, 6: 12, 7: 12}.get(code, 0)
+                    color = '#b42318' if data['overload'] & bitmask or data['status'] & 72 else '#123c60'
+                    size = 18 if len(value) > 18 else 36
+                    label.setToolTip(value)
+                    label.setStyleSheet(f'font-size: {size}px; font-weight: 600; color: {color};')
             for key, value in data.get('extras', {}).items():
                 if key == 'sweep':
                     self.start_button.setText(f'Sweep status: {value} — Start')
                 else:
                     title = 'ADCs' if key.startswith('adc') else 'Digital Port'
                     for box in self.sections[title]:
-                        box.widgets[key].setValue(value)
+                        box.set_value(key, value)
+                        box.baseline[key] = value
+                        box.set_status(key, 'Прибор: '+box.display_value(key, value))
             self.update_digital_bits()
             st, ov = data['status'], data['overload']
-            freq = ' / '.join(f'{f:.8g} Hz' for f in data['frequency'])
+            freq = ' / '.join(engineering(f, 'Hz', 8) for f in data['frequency'])
             oa, of = data['oscillator']
-            self.live_label.setText(f'ST: 0x{st:02X} | Overload: 0x{ov:02X} | Reference: {freq} | '
-                                    f'Oscillator: {oa:.6f} V rms, {of:.3f} Hz'+
-                                    (' | Reference unlock' if st & 8 else '')+
-                                    (' | Input overload' if st & 64 else ''))
-            self.live_label.setStyleSheet('color: #b3261e;' if st & 88 or ov else '')
+            description = status_description(st, ov)
+            self.live_label.setText(f'{description}  |  ST: 0x{st:02X}, OV: 0x{ov:02X}\n'
+                                    f'Reference: {freq}  ·  Oscillator: {engineering(oa, "V rms")}, {engineering(of, "Hz", 8)}')
+            self.live_label.setToolTip('ST: bit 0 — команда завершена; bit 4 — перегрузка выхода; '
+                                       'bit 5 — новые ADC-данные (не ошибка).\n'
+                                       'OV: биты 0…3 — X1, Y1, X2, Y2 (за пределами ±300% FS); '
+                                       'биты 4…7 — DAC1…DAC4.')
+            warning = bool(st & 94 or ov)
+            self.live_label.setStyleSheet('padding: 8px; border-radius: 6px; '+
+                                         ('color: #b42318; background: #fff0ed;' if warning else
+                                          'color: #176447; background: #e9f5ef;'))
+            period = context.get('period_ms')
+            timing = f'USB-цикл: {data["elapsed_ms"]:.0f} ms · пауза: {self.interval.value()} ms'
+            self.timing_label.setText(timing+(f' · период последних обновлений: {period:.0f} ms' if period else ''))
+            if mode_changed:
+                self.update_enabled()
         elif job == 'raw':
             cmd, answer, st, ov = data
             self.log.appendPlainText(f'→ {cmd}\n← {answer or "OK"} | ST=0x{st:02X}, OV=0x{ov:02X}')
             self.command_status.setText(f'Command valid: {not bool(st & 2)} | Parameter valid: {not bool(st & 6)}')
             self.command_input.clear(); self.page_loaded.clear()
-            # A raw command may have changed USBTERM. Reconnect before subsequent queries.
             if cmd.split()[0].upper() in ('USBTERM', 'ADF') and len(cmd.split()) > 1:
                 self.submit('close'); return
             if not st & 6:
-                self.refresh(); return
+                self.pending_jobs.append(('read', {'titles': self.page_titles[self.tabs.currentIndex()]}))
         elif job == 'action':
             self.log.appendPlainText('Выполнено: '+data['action'])
-            self.page_loaded.clear(); self.refresh(); return
-        if job == 'apply':
             self.page_loaded.clear()
-            if self.active_title in ('Input', 'Demodulator', 'Output filters / Noise'):
-                self.refresh(); return
-        self.statusBar().showMessage('Готово')
-        self.update_enabled(); self.schedule_poll()
+            self.pending_jobs.append(('read', {'titles': self.page_titles[self.tabs.currentIndex()]}))
+        if job != 'poll':
+            self.update_enabled()
+        self.dispatch_next()
 
     def update_derived(self):
-        inp = self.sections['Input'][0].values()
-        out = self.sections['Reference / Output 1'][0].values()
-        gain, sen = inp['acgain'], out['sen1']
+        inp = self.sections['Input'][0].baseline
+        out = self.sections['Reference / Output 1'][0].baseline
+        gain, sen = inp.get('acgain'), out.get('sen1')
         if gain is not None and sen is not None:
             imode = max(0, int(inp['input'])-3)
             limit = 2.5 / 2**int(gain) * (1 if imode == 0 else 1e-6 if imode == 1 else 1e-8)
@@ -1090,7 +1351,8 @@ class LockinWindow(QMainWindow):
         for bit, (direction, output, value) in enumerate(self.bit_controls):
             direction.setChecked(bool(int(port['portdir']) & (1 << bit)))
             output.setChecked(bool(int(port['byte']) & (1 << bit)))
-            output.setEnabled(not direction.isChecked())
+            enabled = self.connected and not self.closing and 'portdir' in self.sections['Digital Port'][0].available
+            direction.setEnabled(enabled); output.setEnabled(enabled and not direction.isChecked())
             value.setText(str(int(bool(int(port['readbyte']) & (1 << bit)))))
         self.digital_label.setText('D7…D0 | DIR '+format(int(port['portdir']), '08b')+
                                    ' | OUT '+format(int(port['byte']), '08b')+' | IN '+format(int(port['readbyte']), '08b'))
@@ -1099,31 +1361,42 @@ class LockinWindow(QMainWindow):
         for _, _, label in self.reading_controls:
             label.setText('—')
         self.live_label.setText('ST: — | Overload: — | Reference: —')
+        self.timing_label.setText('Время USB-цикла: —')
         for box in self.all_boxes():
-            box.available.clear(); box.note.setText('Нет актуальных данных')
+            box.available.clear(); box.edits.clear(); box.baseline.clear(); box.deferred.clear()
+            box.reconcile_timer.stop(); box.note.setText('Нет актуальных данных')
+            for key in box.widgets:
+                box.set_status(key, '—')
 
     @pyqtSlot(str, str, bool)
     def on_error(self, job, message, fatal):
-        self.busy = False
+        context = self.inflight or {'payload': {}}
+        self.busy = False; self.inflight = None
         if self.closing:
             return
         self.log.appendPlainText(f'Ошибка ({job}): {message}')
         self.statusBar().showMessage(message)
         if fatal or job == 'open':
             self.connected = False; self.page_loaded.clear()
+            self.pending_jobs.clear(); self.pending_edits.clear(); self.edit_timer.stop()
             self.connection_label.setText('Связь закрыта: '+message)
             self.clear_readings()
         elif job == 'apply':
-            # A multi-command update can have partially succeeded.
-            self.refresh(); return
-        self.update_enabled(); self.schedule_poll()
+            payload = context['payload']
+            for box in self.sections[payload['title']]:
+                for key, version in payload.get('versions', {}).items():
+                    if box.revisions.get(key) == version:
+                        box.edits.pop(key, None)
+                        box.set_status(key, 'Не подтверждено', '#b42318', message)
+        self.update_enabled(); self.dispatch_next()
 
     def closeEvent(self, event):
         if self.thread_stopped:
             event.accept(); return
         event.ignore()
         if not self.closing:
-            self.closing = True; self.poll_timer.stop()
+            self.closing = True; self.poll_timer.stop(); self.edit_timer.stop()
+            self.pending_jobs.clear(); self.pending_edits.clear()
             self.update_enabled(); self.statusBar().showMessage('Закрытие USB…')
             self.stop_worker.emit()
 
