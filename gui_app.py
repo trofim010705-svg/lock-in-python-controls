@@ -549,7 +549,8 @@ class DemoTransport:
                      'FMCENTERV.': '0', 'AMCENTERV.': '0', 'FMCENTERF.': '1000',
                      'FMSPANF.': '0', 'PORTDIR': '0', 'BYTE': '0', 'READBYTE': '0',
                      'TADC': '0', 'RS': '12,1', 'DD': '44', 'REFMON': '0', 'EX': '0',
-                     'SOA': '0', 'SWEEP': '0', 'VRLOCK': '0', 'ST': '1', 'N': '0'}
+                     'SOA': '0', 'SWEEP': '0', 'VRLOCK': '0', 'ST': '1', 'N': '0',
+                     'CBD': '3', 'LEN': '1000', 'CMODE': '0', 'M': '0,0,1,0'}
         for suffix in ('', '1', '2'):
             for base, value in [('REFN', '1'), ('REFP', '0'), ('SEN', '18'), ('TC', '9'),
                                 ('SLOPE', '1'), ('XOF', '0,0'), ('YOF', '0,0')]:
@@ -587,6 +588,16 @@ class DemoTransport:
                 raise CommandError(command, 3)
             self.data[key] = ','.join(args)
             return '', 1, 0
+        if name == '?' or name in ('XY1.', 'XY2.'):
+            position = getattr(self, 'scan_position', 0.)
+            envelope = math.exp(-((position-.5)/.25)**2)
+            signal = [1e-5*envelope, 3e-6*envelope*math.sin(position*10),
+                      2e-6*envelope*math.cos(position*35), 2e-6*envelope*math.sin(position*35)]
+            if name == '?':
+                signal = [signal[i] for i, bit in enumerate((0, 1, 17, 18)) if int(self.data['CBD']) & (1 << bit)]
+            else:
+                signal = signal[:2] if name == 'XY1.' else signal[2:]
+            return ','.join(map(str, signal)), 1, 0
         if key in self.data:
             return self.data[key], 1, 0
         if name.startswith('FRQ'):
@@ -613,6 +624,7 @@ class Worker(QObject):
         super().__init__()
         self.args = demo, serial, timeout, sections, max_frequency
         self.instrument = None
+        self.acquisition = None
 
     @pyqtSlot(str, object)
     def execute(self, job, payload):
@@ -635,7 +647,25 @@ class Worker(QObject):
             if inst is None:
                 raise ValueError('Нет соединения с прибором')
             inst.legacy = payload.get('legacy', False)
-            if job == 'read':
+            if job == 'experiment_prepare':
+                from pump_probe.acquisition import LockInAcquisition
+                self.acquisition = LockInAcquisition(inst, demo=self.args[0])
+                try:
+                    metadata = self.acquisition.prepare()
+                except Exception:
+                    self.acquisition.restore()
+                    raise
+                self.result.emit(job, metadata)
+            elif job == 'experiment_sample':
+                if self.acquisition is None:
+                    raise ValueError('Сеанс измерений не подготовлен')
+                self.result.emit(job, self.acquisition.sample(payload['position']))
+            elif job == 'experiment_release':
+                if self.acquisition is not None:
+                    self.acquisition.restore()
+                    self.acquisition = None
+                self.result.emit(job, {})
+            elif job == 'read':
                 data = {}
                 for title in payload['titles']:
                     self.progress.emit('Чтение: '+title)

@@ -1,4 +1,20 @@
 # lock-in-python-controls
+
+## Pump–Probe и линия задержки Newport ESP301
+
+Новое двухвкладочное приложение: существующий Lock-in + автоматический скан,
+четыре графика pyqtgraph, Home/Stop/Pause/Reset и запись данных с комментариями.
+
+```bash
+python -m pip install -r requirements.txt
+python app.py --demo
+# С реальными приборами:
+python app.py
+```
+
+Подробная настройка оборудования, устройство программы, формат файлов и команды:
+[**PUMP_PROBE.md**](PUMP_PROBE.md).
+
 This is my attempt to transfer the web interface and control of the lock-in amplifier to python. I use the codex.
 
 ## Приложение PyQt5 для Signal Recovery 7230
