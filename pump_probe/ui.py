@@ -17,7 +17,7 @@ from .lockin_widget import LockInWidget
 
 STYLE = '''
 QMainWindow { background: #edf2f8; }
-QTabBar::tab { padding: 11px 20px; font-weight: 600; }
+QTabBar::tab { padding: 11px 20px; }
 QGroupBox { background: white; border: 1px solid #dce4ef; border-radius: 9px;
             margin-top: 11px; padding: 14px 10px 10px; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; color: #26496d;
@@ -62,6 +62,9 @@ class PumpProbeWidget(QWidget):
         scroll.setMinimumWidth(460); splitter.addWidget(scroll)
         connection = QGroupBox('NEWPORT ESP301 · USB / COM'); form = QFormLayout(connection)
         self.port = QComboBox(); self.port.setEditable(True)
+        self.port.setMinimumContentsLength(12)
+        self.port.lineEdit().setPlaceholderText("COM-порт ESP301")
+        self.port.setToolTip("Если список пуст: проверьте USB-драйвер ESP301 в Диспетчере устройств Windows, затем нажмите обновление.")
         self.refresh_ports_button = QPushButton('↻')
         self.refresh_ports_button.setToolTip('Обновить список COM-портов')
         row = QHBoxLayout(); row.addWidget(self.port, 1); row.addWidget(self.refresh_ports_button)

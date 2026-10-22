@@ -2,6 +2,7 @@
 """Pump–Probe Lab. Run `python app.py --demo` for a hardware-free preview."""
 import argparse
 import sys
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 from pump_probe.ui import ExperimentWindow
 
@@ -15,6 +16,8 @@ def main():
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error('--timeout должен быть положительным')
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv[:1]); app.setStyle('Fusion')
     window = ExperimentWindow(args); window.show()
     return app.exec_()
