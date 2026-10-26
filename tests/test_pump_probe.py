@@ -96,6 +96,23 @@ class DriverTests(unittest.TestCase):
 
 
 class StorageTests(unittest.TestCase):
+    def test_origin_headers_units_precision_and_numeric_columns(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for unit in ('V', 'A'):
+                config = ScanConfig(0, 1, 1, 0, str(Path(folder)/(unit+'.dat')))
+                writer = ScanWriter(config, dict(lockin=dict(unit=unit, simulation=True)))
+                path = Path(writer.open())
+                writer.append(10.325123456, [1.23e-8, -4e-7, 0, 9.87654321e-5])
+                writer.close('complete')
+                lines = path.read_bytes().split(b'\r\n')
+                self.assertEqual(lines[0], b'Position\tX1\tY1\tX2\tY2')
+                self.assertEqual(lines[1].decode().split('\t'), ['mm']+[unit]*4)
+                self.assertEqual(len(lines[2].split(b'\t')), 5)
+                self.assertEqual(lines[3], b'')
+                row = np.loadtxt(path, delimiter='\t', skiprows=2)
+                np.testing.assert_allclose(row, [10.325123456, 1.23e-8, -4e-7, 0, 9.87654321e-5])
+                self.assertIn('"simulation": true', writer.comments_path.read_text())
+
     def test_endpoints_descending_single_point_and_point_limit(self):
         config = ScanConfig(0, 1, .3, 0, 'unused.dat')
         self.assertEqual(config.positions(), [0, .3, .6, .9, 1])
@@ -110,7 +127,7 @@ class StorageTests(unittest.TestCase):
             metadata = dict(lockin=dict(unit='V'), stage=dict(axis=1))
             writer = ScanWriter(config, metadata); path = Path(writer.open())
             writer.append(.123, [1, 2, 3, 4])
-            self.assertEqual(np.loadtxt(path).shape, (5,))  # Visible before close.
+            self.assertEqual(np.loadtxt(path, skiprows=2).shape, (5,))  # Visible before close.
             writer.close('stopped', 'Остановлено пользователем')
             contents = path.read_bytes()
             notes = writer.comments_path.read_text()
@@ -208,7 +225,7 @@ class ExperimentTests(unittest.TestCase):
             self.assertFalse(w.lockin.tabs.isEnabled())
         self.spin(lambda:bool(w.outcomes))
         self.assertEqual(w.outcomes[-1][0], 'complete'); self.assertFalse(w.failures)
-        rows = np.loadtxt(w.paths[-1])
+        rows = np.loadtxt(w.paths[-1], skiprows=2)
         np.testing.assert_allclose(rows[:, 0], [0, .01, .02, .03], atol=1e-9)
         self.assertEqual(rows.shape, (4, 5)); self.assertEqual(w.pump.count, 4)
         w.pump.redraw()
@@ -222,6 +239,68 @@ class ExperimentTests(unittest.TestCase):
         w.pump.reset_requested.emit(); self.spin(lambda:w.pump.count == 0)
         self.assertEqual(w.paths[-1].read_bytes(), before)
 
+    def test_manual_go_to_without_lockin_does_not_acquire_or_create_files(self):
+        w = self.window(SlowStage)
+        w.lockin.submit('close')
+        self.spin(lambda:not w.pump.lockin_connected and not w.lockin.busy)
+        self.assertTrue(w.pump.goto_button.isEnabled())
+        requests = []
+        w.worker.lockin_request.connect(lambda *args:requests.append(args))
+        w.pump.goto_position.setValue(.12)
+        w.pump.goto_button.click()
+        self.spin(lambda:w.pump.state == 'positioning')
+        self.assertFalse(w.pump.goto_button.isEnabled())
+        self.assertFalse(w.pump.start_button.isEnabled())
+        self.spin(lambda:w.pump.state == 'idle')
+        self.assertAlmostEqual(w.worker.driver.position(), .12)
+        self.assertFalse(requests); self.assertFalse(w.paths); self.assertEqual(w.pump.count, 0)
+        self.assertFalse(list(Path(w.pump.output.text()).parent.glob('*.dat')))
+
+    def test_manual_go_to_stop_and_scan_data_remain_unchanged(self):
+        w = self.window(SlowStage)
+        w.pump.start_scan(); self.spin(lambda:bool(w.outcomes))
+        path, rows = w.paths[-1], w.pump.rows.copy()
+        before = path.read_bytes()
+        w.pump.goto_position.setValue(2)
+        w.pump.goto_button.click(); self.spin(lambda:w.pump.state == 'positioning')
+        w.pump.stop_button.click(); self.spin(lambda:w.pump.state == 'idle')
+        self.assertLess(w.worker.driver.position(), 2)
+        self.assertTrue(w.worker.driver.motion_done())
+        np.testing.assert_array_equal(w.pump.rows, rows)
+        self.assertEqual(path.read_bytes(), before); self.assertEqual(len(w.paths), 1)
+        self.assertIsNone(w.lockin.reservation)
+
+    def test_manual_go_to_limits_and_timeout(self):
+        class StuckStage(DemoESP301):
+            def move_absolute(self, position):
+                super().move_absolute(position)
+                self._ends = time.monotonic()+60
+        w = self.window(StuckStage)
+        w.pump.goto_requested.emit(26, .002, 1)
+        self.spin(lambda:bool(w.failures))
+        self.assertFalse(any(cmd[0] == 'PA' for cmd in w.worker.driver.commands))
+        self.assertEqual(w.worker.state, 'idle')
+        w.pump.goto_requested.emit(.2, .002, .05)
+        self.spin(lambda:any('Тайм-аут' in message for message in w.failures))
+        self.spin(lambda:w.pump.state == 'idle')
+        self.assertTrue(w.worker.driver.motion_done()); self.assertFalse(w.paths)
+
+    def test_tabs_panel_and_millimetre_controls_fit(self):
+        w = self.window()
+        for tabs in (w.tabs, w.lockin.tabs):
+            bar = tabs.tabBar()
+            for i in range(tabs.count()):
+                self.assertGreaterEqual(bar.tabRect(i).width(), bar.fontMetrics().horizontalAdvance(tabs.tabText(i))+32)
+                self.assertGreaterEqual(bar.tabRect(i).height(), 44)
+        self.assertGreaterEqual(w.pump.splitter.sizes()[0], 540)
+        self.assertLessEqual(w.pump.settings_scroll.widget().minimumSizeHint().width(),
+                             w.pump.settings_scroll.viewport().width())
+        for control in (w.pump.start_position, w.pump.stop_position, w.pump.step,
+                        w.pump.goto_position, w.pump.tolerance):
+            self.assertEqual(control.decimals(), 3)
+        self.assertEqual(w.pump.tolerance.value(), .002)
+        self.assertEqual(w.pump.step.minimum(), .001)
+
     def test_pause_during_motion_repeats_target_and_preserves_point_order(self):
         w = self.window(SlowStage)
         w.pump.start_position.setValue(.2); w.pump.stop_position.setValue(.22); w.pump.step.setValue(.02)
@@ -229,7 +308,7 @@ class ExperimentTests(unittest.TestCase):
         w.pump.pause_requested.emit(); self.spin(lambda:w.pump.state == 'paused')
         count = w.pump.count; QTest.qWait(100); self.assertEqual(w.pump.count, count)
         w.pump.pause_requested.emit(); self.spin(lambda:bool(w.outcomes))
-        rows = np.atleast_2d(np.loadtxt(w.paths[-1]))
+        rows = np.atleast_2d(np.loadtxt(w.paths[-1], skiprows=2))
         np.testing.assert_allclose(rows[:, 0], [.2, .22], atol=1e-9)
         self.assertEqual(w.outcomes[-1][0], 'complete')
         self.assertTrue(any(cmd[0] == 'ST' for cmd in w.worker.driver.commands))
@@ -247,7 +326,7 @@ class ExperimentTests(unittest.TestCase):
         w.pump.start_scan(); self.spin(lambda:w.pump.count >= 2)
         w.pump.stop_requested.emit(); self.spin(lambda:bool(w.outcomes))
         self.assertEqual(w.outcomes[-1][0], 'stopped')
-        rows = np.atleast_2d(np.loadtxt(w.paths[-1]))
+        rows = np.atleast_2d(np.loadtxt(w.paths[-1], skiprows=2))
         self.assertTrue(2 <= len(rows) < 101); self.assertEqual(len(rows), w.pump.count)
         self.assertIn('RESULT: stopped', w.paths[-1].with_suffix('.comments.txt').read_text())
         driver = w.worker.driver
@@ -294,7 +373,7 @@ class ExperimentTests(unittest.TestCase):
         w.pump.start_scan(); self.spin(lambda:bool(w.outcomes))
         self.assertEqual(w.outcomes[-1][0], 'error')
         self.assertFalse(w.lockin.connected); self.assertIsNone(w.lockin.reservation)
-        self.assertEqual(len(np.atleast_2d(np.loadtxt(w.paths[-1]))), 1)
+        self.assertEqual(len(np.atleast_2d(np.loadtxt(w.paths[-1], skiprows=2))), 1)
         self.assertTrue(w.worker.driver.motion_done())
         self.assertIn('RESULT: error', w.paths[-1].with_suffix('.comments.txt').read_text())
 
@@ -340,7 +419,7 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(w.outcomes[-1][0], 'error')
         self.assertFalse(w.pump.stage_connected)
         self.assertIsNone(w.lockin.reservation)
-        self.assertGreaterEqual(len(np.atleast_2d(np.loadtxt(w.paths[-1]))), 1)
+        self.assertGreaterEqual(len(np.atleast_2d(np.loadtxt(w.paths[-1], skiprows=2))), 1)
         self.assertIn('Остановка оси не подтверждена', w.outcomes[-1][1])
 
     def test_reset_running_scan_preserves_file_and_clears_only_plots(self):
@@ -348,7 +427,7 @@ class ExperimentTests(unittest.TestCase):
         w.pump.start_scan(); self.spin(lambda:w.pump.count >= 1)
         w.pump.reset_requested.emit(); self.spin(lambda:bool(w.outcomes))
         self.assertEqual(w.outcomes[-1][0], 'reset'); self.assertEqual(w.pump.count, 0)
-        self.assertGreaterEqual(len(np.atleast_2d(np.loadtxt(w.paths[-1]))), 1)
+        self.assertGreaterEqual(len(np.atleast_2d(np.loadtxt(w.paths[-1], skiprows=2))), 1)
         self.assertIn('RESULT: reset', w.paths[-1].with_suffix('.comments.txt').read_text())
 
     def test_stop_during_disk_flush_prevents_next_motion(self):
@@ -386,7 +465,7 @@ class ExperimentTests(unittest.TestCase):
         path = w.paths[-1]
         w.close(); self.spin(lambda:w.stage_stopped and w.lockin.thread_stopped)
         self.assertFalse(w.stage_thread.isRunning()); self.assertFalse(w.lockin.thread.isRunning())
-        self.assertGreaterEqual(len(np.atleast_2d(np.loadtxt(path))), 1)
+        self.assertGreaterEqual(len(np.atleast_2d(np.loadtxt(path, skiprows=2))), 1)
         self.assertIn('RESULT: closed', path.with_suffix('.comments.txt').read_text())
 
 

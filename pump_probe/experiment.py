@@ -3,6 +3,7 @@
 Qt timers wait for motion and settling without sleeps. VISA acquisition is an
 asynchronous request to LockInWidget's existing, exclusive USB worker.
 """
+import math
 import time
 from threading import Event
 from PyQt5.QtCore import QObject, QTimer, Qt, pyqtSignal, pyqtSlot
@@ -35,6 +36,8 @@ class ExperimentWorker(QObject):
         self.outcome, self.message = 'complete', ''
         self.targets, self.index, self.actual = [], 0, 0.
         self.deadline = self.last_position_time = 0.
+        self.manual_target = None
+        self.manual_tolerance = .002
 
     def set_state(self, state, message):
         self.state = state
@@ -259,6 +262,7 @@ class ExperimentWorker(QObject):
             self.writer = None
         message = self.message.strip() or f'Сохранено точек: {self.index}/{len(self.targets)}'
         self.config = None
+        self.manual_target = None
         self.stop_requested = self.pause_requested = False
         self.set_state('idle', ('Ошибка: '+message) if self.outcome == 'error' else 'Готово')
         if was_scan:
@@ -298,10 +302,42 @@ class ExperimentWorker(QObject):
         try:
             if not self.driver.motion_done():
                 raise ESPError('Ось уже движется')
+            self.cancel_event.clear()
             self.driver.home()
             self.stage_stopped = False
             self.deadline = time.monotonic()+timeout
             self.set_state('homing', 'Поиск Home по настройкам контроллера…')
+        except Exception as exc:
+            self.fail(str(exc), isinstance(exc, ESPConnectionError))
+
+    @pyqtSlot(float, float, float)
+    def go_to(self, target, tolerance, timeout):
+        """Manual PA move: no USB lease, acquisition, files or plot changes."""
+        if self.state != 'idle' or self.driver is None or self.shutting_down:
+            self.state_changed.emit(self.state, 'Перемещение отклонено: ось занята или не подключена')
+            self.error.emit('Дождитесь завершения операции и подключите ESP301')
+            return
+        # Validate before any motion or state change; the driver also checks limits.
+        if not all(math.isfinite(x) for x in (target, tolerance, timeout)) or tolerance <= 0 or timeout <= 0:
+            self.set_state('idle', 'Перемещение отклонено')
+            self.error.emit('Координата должна быть конечной; допуск и тайм-аут должны быть > 0')
+            return
+        if not self.driver.limits[0] <= target <= self.driver.limits[1]:
+            self.set_state('idle', 'Перемещение отклонено')
+            self.error.emit(f'Цель {target:g} mm выходит за пределы оси {self.driver.limits}')
+            return
+        try:
+            if not self.driver.motion_done():
+                raise ESPError('Ось уже движется. Остановите её перед Go to.')
+            self.driver.check_error()
+            self.cancel_event.clear()
+            self.stop_requested = self.pause_requested = False
+            self.manual_target, self.manual_tolerance = target, tolerance
+            self.outcome, self.message = 'complete', ''
+            self.driver.move_absolute(target)
+            self.stage_stopped = False
+            self.deadline = time.monotonic()+timeout
+            self.set_state('positioning', f'Go to: перемещение к {target:.3f} mm без измерений')
         except Exception as exc:
             self.fail(str(exc), isinstance(exc, ESPConnectionError))
 
@@ -321,7 +357,7 @@ class ExperimentWorker(QObject):
                 return
             if self.driver is None:
                 return
-            if self.state in ('moving', 'pausing', 'stopping', 'homing'):
+            if self.state in ('moving', 'pausing', 'stopping', 'homing', 'positioning'):
                 done = self.driver.motion_done()
                 if done or now-self.last_position_time >= .1:
                     self.actual = self.driver.position()
@@ -345,6 +381,11 @@ class ExperimentWorker(QObject):
                     self.set_state('paused', 'Ось остановлена · пауза')
                 elif self.state == 'homing':
                     self.set_state('idle', 'Home выполнен')
+                elif self.state == 'positioning':
+                    if abs(self.actual-self.manual_target) > self.manual_tolerance:
+                        raise ESPError(f'Позиция {self.actual:.9f} mm не совпала с целью {self.manual_target:.9f} mm')
+                    self.manual_target = None
+                    self.set_state('idle', f'Go to выполнен: {self.actual:.3f} mm · без измерений')
                 else:
                     if abs(self.actual-self.targets[self.index]) > self.config.tolerance_mm:
                         raise ESPError(f'Позиция {self.actual:.9f} mm не совпала с целью {self.targets[self.index]:.9f} mm')

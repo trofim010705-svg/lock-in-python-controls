@@ -7,8 +7,9 @@ from PyQt5.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
     QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSpinBox,
-    QSplitter, QTabWidget, QVBoxLayout, QWidget,
+    QSizePolicy, QSplitter, QTabWidget, QVBoxLayout, QWidget,
 )
+from gui_widgets import InstrumentTabBar
 import pyqtgraph as pg  # PyQt5 is imported first so pyqtgraph uses the same Qt binding.
 from .data import ScanConfig
 from .experiment import ExperimentWorker
@@ -17,7 +18,6 @@ from .lockin_widget import LockInWidget
 
 STYLE = '''
 QMainWindow { background: #edf2f8; }
-QTabBar::tab { padding: 11px 20px; }
 QGroupBox { background: white; border: 1px solid #dce4ef; border-radius: 9px;
             margin-top: 11px; padding: 14px 10px 10px; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; color: #26496d;
@@ -42,6 +42,7 @@ class PumpProbeWidget(QWidget):
     stop_requested = pyqtSignal()
     reset_requested = pyqtSignal()
     home_requested = pyqtSignal(float)
+    goto_requested = pyqtSignal(float, float, float)
 
     def __init__(self, demo=False):
         super().__init__()
@@ -56,10 +57,12 @@ class PumpProbeWidget(QWidget):
         title = QLabel('PUMP–PROBE  /  SPIN DYNAMICS')
         title.setStyleSheet('font-size: 18px; font-weight: 600; color: #164367; padding: 4px;')
         root.addWidget(title)
-        splitter = QSplitter(Qt.Horizontal); root.addWidget(splitter, 1)
+        self.splitter = splitter = QSplitter(Qt.Horizontal); root.addWidget(splitter, 1)
+        splitter.setChildrenCollapsible(False)
         settings = QWidget(); left = QVBoxLayout(settings); left.setContentsMargins(0, 0, 8, 0)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(settings)
-        scroll.setMinimumWidth(460); splitter.addWidget(scroll)
+        self.settings_scroll = scroll
+        scroll.setMinimumWidth(500); splitter.addWidget(scroll)
         connection = QGroupBox('NEWPORT ESP301 · USB / COM'); form = QFormLayout(connection)
         self.port = QComboBox(); self.port.setEditable(True)
         self.port.setMinimumContentsLength(12)
@@ -91,11 +94,20 @@ class PumpProbeWidget(QWidget):
         self.home_button.clicked.connect(lambda: self.home_requested.emit(self.motion_timeout.value()))
         self.stop_button.clicked.connect(self.stop_requested)
         row.addWidget(self.home_button); row.addWidget(self.stop_button); form.addRow(row)
+        self.goto_position = self.spin(-1e6, 1e6, 3, 0)
+        self.goto_position.setSingleStep(.001)
+        self.goto_button = QPushButton('Go to')
+        self.goto_button.setToolTip('Переместить ось к указанной абсолютной позиции без измерений и записи файла.')
+        self.goto_button.clicked.connect(self.go_to)
+        row = QHBoxLayout(); row.addWidget(self.goto_position, 1); row.addWidget(self.goto_button)
+        form.addRow('Перейти к, mm', row)
         left.addWidget(connection)
         scan = QGroupBox('СКАНИРОВАНИЕ'); form = QFormLayout(scan)
-        self.start_position = self.spin(-1e6, 1e6, 6, 0)
-        self.stop_position = self.spin(-1e6, 1e6, 6, 1)
-        self.step = self.spin(.000001, 1e6, 6, .01)
+        self.start_position = self.spin(-1e6, 1e6, 3, 0)
+        self.stop_position = self.spin(-1e6, 1e6, 3, 1)
+        self.step = self.spin(.001, 1e6, 3, .01)
+        for w in (self.start_position, self.stop_position, self.step):
+            w.setSingleStep(.001)
         self.delay = self.spin(0, 600000, 1, 50)
         for text, w in [('Старт, mm', self.start_position), ('Стоп, mm', self.stop_position),
                         ('Шаг, mm', self.step), ('Задержка, ms', self.delay)]:
@@ -103,7 +115,8 @@ class PumpProbeWidget(QWidget):
         hint = QLabel('Задержка отсчитывается после остановки оси.\nЛокин должен работать в режиме Dual reference.')
         hint.setWordWrap(True); hint.setStyleSheet('color: #65768a; font-size: 11px;')
         form.addRow(hint)
-        self.tolerance = self.spin(.000001, 1, 6, .001)
+        self.tolerance = self.spin(.001, 1, 3, .002)
+        self.tolerance.setSingleStep(.001)
         self.motion_timeout = self.spin(1, 3600, 0, 120)
         form.addRow('Допуск позиции, mm', self.tolerance)
         form.addRow('Тайм-аут движения, s', self.motion_timeout)
@@ -132,6 +145,7 @@ class PumpProbeWidget(QWidget):
         self.comments = QPlainTextEdit(); self.comments.setPlaceholderText('Образец, температура, поле, мощность pump/probe…')
         self.comments.setMaximumHeight(110); form.addWidget(self.comments)
         self.saved_path = QLabel('Файл: —'); self.saved_path.setWordWrap(True); self.saved_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.saved_path.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         form.addWidget(self.saved_path)
         left.addWidget(save); left.addStretch()
         charts = QWidget(); chart_layout = QVBoxLayout(charts); chart_layout.setContentsMargins(4, 0, 0, 0)
@@ -161,7 +175,10 @@ class PumpProbeWidget(QWidget):
         self.log = QPlainTextEdit(); self.log.setReadOnly(True); self.log.setMaximumBlockCount(500)
         self.log.setMaximumHeight(105); chart_layout.addWidget(self.log)
         splitter.addWidget(charts); splitter.setStretchFactor(0, 0); splitter.setStretchFactor(1, 1)
-        splitter.setSizes([460, 1020])
+        splitter.setSizes([560, 920])
+        for form in settings.findChildren(QFormLayout):
+            form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+            form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
         self.plot_timer = QTimer(self); self.plot_timer.setInterval(50); self.plot_timer.timeout.connect(self.redraw)
         self.plot_timer.start()
         self.refresh_ports_button.clicked.connect(self.refresh_ports)
@@ -169,7 +186,7 @@ class PumpProbeWidget(QWidget):
 
     @staticmethod
     def spin(low, high, decimals, value):
-        w = QDoubleSpinBox(); w.setRange(low, high); w.setDecimals(decimals)
+        w = QDoubleSpinBox(); w.setDecimals(decimals); w.setRange(low, high)
         w.setKeyboardTracking(False); w.setValue(value)
         return w
 
@@ -222,6 +239,12 @@ class PumpProbeWidget(QWidget):
         except Exception as exc:
             self.show_error(str(exc))
 
+    def go_to(self):
+        if self.state != 'idle' or not self.stage_connected:
+            return
+        self.set_state('positioning', 'Перемещение без измерений…')
+        self.goto_requested.emit(self.goto_position.value(), self.tolerance.value(), self.motion_timeout.value())
+
     @pyqtSlot(bool, object)
     def set_stage(self, connected, info):
         self.stage_connected = connected
@@ -229,7 +252,7 @@ class PumpProbeWidget(QWidget):
             limits = info['limits']
             self.stage_label.setText(f'{info["version"]}\nОсь {info["axis"]} · {info["stage"]}\n'
                                      f'Пределы: {limits[0]:g} … {limits[1]:g} mm')
-            for w in (self.start_position, self.stop_position):
+            for w in (self.start_position, self.stop_position, self.goto_position):
                 w.setRange(*limits)
             if info.get('history'):
                 self.log.appendPlainText('Предыдущие ошибки ESP301: '+'; '.join(info['history']))
@@ -245,7 +268,7 @@ class PumpProbeWidget(QWidget):
 
     @pyqtSlot(float)
     def set_position(self, position):
-        self.position.setText(f'{position:.6f} mm')
+        self.position.setText(f'{position:.3f} mm')
 
     @pyqtSlot(str, str)
     def set_state(self, state, message):
@@ -264,6 +287,8 @@ class PumpProbeWidget(QWidget):
                   self.browse_button, self.tolerance, self.motion_timeout, self.stop_on_warning):
             w.setEnabled(idle)
         self.home_button.setEnabled(idle and self.stage_connected)
+        self.goto_button.setEnabled(idle and self.stage_connected)
+        self.goto_position.setEnabled(idle and self.stage_connected)
         self.stop_button.setEnabled(self.stage_connected or not idle)
         self.start_button.setEnabled(idle and self.stage_connected and self.lockin_connected)
         self.pause_button.setEnabled(self.state in ('preparing', 'moving', 'settling', 'sampling', 'paused'))
@@ -326,6 +351,7 @@ class ExperimentWindow(QMainWindow):
         self.resize(1480, 980); self.setStyleSheet(STYLE)
         self.closing = self.stage_stopped = False
         self.tabs = QTabWidget(); self.setCentralWidget(self.tabs)
+        self.tabs.setTabBar(InstrumentTabBar(self.tabs))
         self.lockin = LockInWidget(args)
         self.pump = PumpProbeWidget(args.demo)
         self.tabs.addTab(self.lockin, 'Управление Lock-in')
@@ -345,6 +371,7 @@ class ExperimentWindow(QMainWindow):
         self.pump.reset_requested.connect(self.worker.cancel_event.set, Qt.DirectConnection)
         self.pump.reset_requested.connect(self.worker.reset)
         self.pump.home_requested.connect(self.worker.home)
+        self.pump.goto_requested.connect(self.worker.go_to)
         self.worker.stage_changed.connect(self.pump.set_stage)
         self.worker.position_changed.connect(self.pump.set_position)
         self.worker.state_changed.connect(self.pump.set_state)

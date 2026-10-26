@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPlainTextEdit,
     QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
+from gui_widgets import InstrumentTabBar
 
 
 def engineering(value, unit, significant=6):
@@ -959,7 +960,6 @@ class LockinWindow(QMainWindow):
             QGroupBox#measurementCard { background: #ffffff; border: 1px solid #b9cfe7;
                                        margin-top: 0; padding: 12px; }
             QComboBox, QDoubleSpinBox, QSpinBox, QLineEdit { min-height: 25px; }
-            QTabBar::tab { padding: 9px 16px; }
             QPushButton { padding: 6px 12px; }
         """)
         root = QWidget(); self.setCentralWidget(root); layout = QVBoxLayout(root)
@@ -999,6 +999,7 @@ class LockinWindow(QMainWindow):
         self.live_label.setWordWrap(True); self.live_label.setMinimumHeight(64); layout.addWidget(self.live_label)
         self.timing_label = QLabel('Время USB-цикла: —'); layout.addWidget(self.timing_label)
         self.tabs = QTabWidget(); layout.addWidget(self.tabs)
+        self.tabs.setTabBar(InstrumentTabBar(self.tabs))
         self.page_titles = [
             ['Input', 'Demodulator', 'Reference / Output 1', 'Reference / Output 2', 'Output filters / Noise', 'Oscillator output'],
             ['Oscillator output', 'Frequency / Amplitude Sweep', 'Modulation', 'Frequency modulation (VCO)', 'Amplitude modulation'],

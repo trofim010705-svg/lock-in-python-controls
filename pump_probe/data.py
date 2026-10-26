@@ -16,7 +16,7 @@ class ScanConfig:
     delay_ms: float
     output: str
     comments: str = ''
-    tolerance_mm: float = .001
+    tolerance_mm: float = .002
     motion_timeout_s: float = 120
     stop_on_warning: bool = True
 
@@ -64,7 +64,7 @@ class ScanWriter:
             if comments_path.exists():
                 continue
             try:
-                data = path.open('x', encoding='utf-8', newline='\n')
+                data = path.open('x', encoding='utf-8', newline='\r\n')
             except FileExistsError:
                 continue
             try:
@@ -78,9 +78,10 @@ class ScanWriter:
         else:
             raise OSError('Не удалось выбрать свободное имя файла')
         try:
-            self.data.write('# Position_mm\tX1\tY1\tX2\tY2\n')
-            self.data.write('# Signal unit: '+self.metadata['lockin']['unit']+'\n')
-            self.data.write('# Simulation: '+str(self.metadata['lockin'].get('simulation', False))+'\n')
+            # Origin: first row = Long Names, second = Units, then numeric TSV.
+            unit = self.metadata['lockin']['unit']
+            self.data.write('Position\tX1\tY1\tX2\tY2\n')
+            self.data.write('mm\t'+'\t'.join([unit]*4)+'\n')
             self.notes.write('Pump–Probe / Spin dynamics\nStarted (UTC): '+datetime.now(timezone.utc).isoformat()+'\n\n')
             self.notes.write('COMMENTS\n'+self.config.comments+'\n\nCONFIGURATION\n')
             self.notes.write(json.dumps(dict(scan=asdict(self.config), **self.metadata), ensure_ascii=False, indent=2)+'\n')
