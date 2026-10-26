@@ -1,8 +1,9 @@
 """Two-tab experiment application. Plot drawing is throttled independently of I/O."""
 from datetime import datetime
+import math
 from pathlib import Path
 import numpy as np
-from PyQt5.QtCore import QThread, QTimer, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QSettings, QThread, QTimer, Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
     QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
@@ -44,8 +45,10 @@ class PumpProbeWidget(QWidget):
     home_requested = pyqtSignal(float)
     goto_requested = pyqtSignal(float, float, float)
 
-    def __init__(self, demo=False):
+    def __init__(self, demo=False, settings=None):
         super().__init__()
+        # Explicit identity also works when launched as an EXE or from another folder.
+        self.settings = settings if settings is not None else QSettings('PumpProbeLab', 'PumpProbeLab')
         self.demo, self.stage_connected, self.lockin_connected = demo, False, False
         pg.setConfigOption('foreground', '#42566c')
         self.state = 'idle'
@@ -182,7 +185,57 @@ class PumpProbeWidget(QWidget):
         self.plot_timer = QTimer(self); self.plot_timer.setInterval(50); self.plot_timer.timeout.connect(self.redraw)
         self.plot_timer.start()
         self.refresh_ports_button.clicked.connect(self.refresh_ports)
+        for key, field in self.default_fields().items():
+            self.restore_default(key, field)
+            # The editor handles right clicks over the number; the spinbox handles its frame.
+            for source in (field, field.lineEdit()):
+                source.setContextMenuPolicy(Qt.CustomContextMenu)
+                source.customContextMenuRequested.connect(
+                    lambda pos, k=key, w=field, s=source: self.default_menu(k, w, s, pos))
         self.refresh_ports(); self.update_enabled()
+
+    def default_fields(self):
+        return dict(axis=self.axis, goto_position=self.goto_position,
+                    start_position=self.start_position, stop_position=self.stop_position,
+                    step=self.step, delay=self.delay, tolerance=self.tolerance,
+                    motion_timeout=self.motion_timeout)
+
+    def restore_default(self, key, field):
+        value = self.settings.value('delay_line_defaults/'+key)
+        try:
+            value = float(value)
+            if not math.isfinite(value) or not field.minimum() <= value <= field.maximum():
+                return
+            if isinstance(field, QSpinBox):
+                if not value.is_integer():
+                    return
+                value = int(value)
+            field.setValue(value)
+        except (TypeError, ValueError, OverflowError):
+            pass  # Missing or damaged settings leave the built-in default intact.
+
+    def default_menu(self, key, field, source, pos):
+        menu = field.lineEdit().createStandardContextMenu()
+        menu.addSeparator()
+        action = menu.addAction('Сделать значением по умолчанию')
+        action.setEnabled(field.isEnabled() and not field.isReadOnly())
+        action.triggered.connect(lambda: self.save_default(key, field))
+        menu.exec_(source.mapToGlobal(pos))
+        menu.deleteLater()
+
+    def save_default(self, key, field):
+        if not field.isEnabled() or field.isReadOnly():
+            return
+        if not field.hasAcceptableInput():
+            self.show_error('Введите корректное число перед сохранением значения по умолчанию')
+            return
+        field.interpretText()  # Include text typed since the last Enter/focus change.
+        self.settings.setValue('delay_line_defaults/'+key, field.value())
+        self.settings.sync()
+        if self.settings.status() != QSettings.NoError:
+            self.show_error('Не удалось сохранить значение по умолчанию в настройках пользователя')
+            return
+        self.status.setText('Значение '+field.text()+' сохранено по умолчанию для этого поля.')
 
     @staticmethod
     def spin(low, high, decimals, value):

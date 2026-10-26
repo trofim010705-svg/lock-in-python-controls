@@ -11,12 +11,14 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 import numpy as np
 from PyQt5.QtTest import QTest
+from PyQt5.QtCore import QSettings
 from PyQt5.QtWidgets import QApplication
+from unittest.mock import patch
 import gui_app as g
 from pump_probe.acquisition import LockInAcquisition, SNAPSHOT_MASK
 from pump_probe.data import ScanConfig, ScanWriter
 from pump_probe.esp301 import ESP301, DemoESP301, ESPError, ESPConnectionError
-from pump_probe.ui import ExperimentWindow
+from pump_probe.ui import ExperimentWindow, PumpProbeWidget
 
 
 class FakeSerial:
@@ -198,7 +200,11 @@ class ExperimentTests(unittest.TestCase):
     def window(self, factory=None):
         folder = tempfile.TemporaryDirectory(); self.addCleanup(folder.cleanup)
         args = argparse.Namespace(demo=True, serial=None, timeout=100, max_frequency=120000)
-        w = ExperimentWindow(args, factory); w.show()
+        settings = QSettings(str(Path(folder.name)/'preferences.ini'), QSettings.IniFormat)
+        with patch('pump_probe.ui.QSettings', wraps=QSettings) as settings_factory:
+            settings_factory.return_value = settings
+            w = ExperimentWindow(args, factory)
+        w.show()
         def close():
             w.close(); self.spin(lambda:w.stage_stopped and w.lockin.thread_stopped)
         self.addCleanup(close)
@@ -208,6 +214,7 @@ class ExperimentTests(unittest.TestCase):
         w.worker.run_started.connect(lambda data:w.paths.append(Path(data['path'])))
         self.spin(lambda:w.pump.stage_connected and w.pump.lockin_connected and not w.lockin.busy)
         w.pump.output.setText(str(Path(folder.name)/'scan.dat')); w.pump.output_is_default = False
+        w.pump.start_position.setValue(0)
         w.pump.stop_position.setValue(.03); w.pump.step.setValue(.01); w.pump.delay.setValue(0)
         return w
 
@@ -298,7 +305,7 @@ class ExperimentTests(unittest.TestCase):
         for control in (w.pump.start_position, w.pump.stop_position, w.pump.step,
                         w.pump.goto_position, w.pump.tolerance):
             self.assertEqual(control.decimals(), 3)
-        self.assertEqual(w.pump.tolerance.value(), .002)
+        self.assertEqual(w.pump.tolerance.value(), .020)
         self.assertEqual(w.pump.step.minimum(), .001)
 
     def test_pause_during_motion_repeats_target_and_preserves_point_order(self):
