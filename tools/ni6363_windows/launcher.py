@@ -4,24 +4,33 @@ import platform
 from pathlib import Path
 import sys
 import traceback
+import multiprocessing
 
 
 def smoke_test(report_path):
+    report = Path(report_path)
+    report.parent.mkdir(parents=True, exist_ok=True)
+    outcome = {'ok': False, 'frozen': bool(getattr(sys, 'frozen', False)),
+               'platform': platform.platform(), 'python': platform.python_version()}
+
+    def stage(name):
+        outcome['stage'] = name
+        report.write_text(json.dumps(outcome, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    stage('import numpy and Qt')
     import numpy as np
     from PyQt5.QtCore import Qt, QTimer, QT_VERSION_STR, PYQT_VERSION_STR
     from PyQt5.QtWidgets import QApplication
     from backend import load_daqmx, discover_devices
     from core import export_snapshot
     from gui import MainWindow
-
-    report = Path(report_path)
-    report.parent.mkdir(parents=True, exist_ok=True)
-    outcome = {'ok': False, 'frozen': bool(getattr(sys, 'frozen', False)),
-               'platform': platform.platform(), 'python': platform.python_version(),
-               'qt': QT_VERSION_STR, 'pyqt': PYQT_VERSION_STR}
+    from daq_process import NIProcessInput
+    outcome.update(qt=QT_VERSION_STR, pyqt=PYQT_VERSION_STR)
+    stage('import NI Python API')
     api, constants, *_ = load_daqmx()
     assert constants.TerminalConfiguration.DIFF.value == 10106
     outcome['ni_python_api_imported'] = True
+    stage('discover installed NI driver')
     try:
         devices, version = discover_devices()
         outcome['ni_driver'] = version
@@ -30,13 +39,14 @@ def smoke_test(report_path):
         if type(exc).__name__ != 'DaqNotFoundError':
             raise
         outcome['ni_driver'] = 'not installed; expected and handled'
+    stage('create GUI')
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv[:1])
     app.setApplicationName('NIUSB6363Reader-BuildCheck')
     app.setOrganizationName('LabTools')
     app.setStyle('Fusion')
-    window = MainWindow(demo=True)
+    window = MainWindow(demo=True, acquisition_factory=NIProcessInput)
     ending = False
 
     def finish(ok, detail):
@@ -71,6 +81,7 @@ def smoke_test(report_path):
     timer.timeout.connect(check)
     timer.start()
     window.show()
+    stage('start isolated demo acquisition')
     QTimer.singleShot(0, window.start)
     QTimer.singleShot(20000, lambda: finish(False, 'Windows smoke test timed out.'))
     app.exec_()
@@ -81,6 +92,7 @@ def smoke_test(report_path):
 
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()
     try:
         if len(sys.argv)==3 and sys.argv[1]=='--self-test':
             sys.exit(smoke_test(sys.argv[2]))
@@ -89,4 +101,5 @@ if __name__ == '__main__':
     except Exception:
         if len(sys.argv)==3 and sys.argv[1]=='--self-test':
             Path(sys.argv[2]).write_text(json.dumps({'ok':False,'error':traceback.format_exc()}),encoding='utf-8')
+            sys.exit(1)
         raise

@@ -1,4 +1,4 @@
-"""Build the verified NIUSB6363Reader 1.0 source archive on Windows x64."""
+"""Build the verified NIUSB6363Reader 1.1 source archive on Windows x64."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -11,7 +11,7 @@ import sys
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = '80b7e0703867d0c4994431798e581989c395f83678e475ece144dde7d3eca73c'
+SOURCE_SHA256 = '43dd7ca554c759ef9a963be945943a0b2f54b67dcc1632cf4a151301c07deded'
 NAME = 'NIUSB6363Reader'
 
 
@@ -35,7 +35,11 @@ def extract_source(archive, destination):
 
 
 def test_executable(exe, report):
-    subprocess.run([str(exe), '--self-test', str(report)], check=True, timeout=45)
+    try:
+        subprocess.run([str(exe), '--self-test', str(report)], check=True, timeout=60)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        print('Frozen check failed; report: ' + (report.read_text(encoding='utf-8') if report.exists() else 'not created'), flush=True)
+        raise
     data = json.loads(report.read_text(encoding='utf-8'))
     if not data.get('ok') or not data.get('frozen') or data.get('qt_platform') != 'windows':
         raise RuntimeError(f'Frozen Windows GUI check failed: {data}')
@@ -64,10 +68,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     script = Path(__file__).resolve()
     repo = script.parents[2] if len(script.parents) > 2 else script.parent
-    local_source = script.with_name('NIUSB6363Reader_v1.zip')
+    local_source = script.with_name('NIUSB6363Reader_v1_1.zip')
     archive_folder = script.parent if local_source.exists() else repo / 'updates'
-    parser.add_argument('--source', type=Path, default=archive_folder / 'NIUSB6363Reader_v1.zip')
-    parser.add_argument('--output', type=Path, default=archive_folder / 'NIUSB6363Reader_v1_Windows_x64.zip')
+    parser.add_argument('--source', type=Path, default=archive_folder / 'NIUSB6363Reader_v1_1.zip')
+    parser.add_argument('--output', type=Path, default=archive_folder / 'NIUSB6363Reader_v1_1_Windows_x64.zip')
     parser.add_argument('--prepare-only', action='store_true')
     args = parser.parse_args()
     if not args.prepare_only and (sys.platform != 'win32' or platform.architecture()[0] != '64bit'):
@@ -98,7 +102,7 @@ def main():
         print('Frozen application passed checks in ASCII and Cyrillic directories.', flush=True)
         versions = {name: importlib.metadata.version(name) for name in
                     ('PyQt5', 'PyQt5-Qt5', 'PyQt5-sip', 'numpy', 'pyqtgraph', 'nidaqmx', 'nitypes', 'PyInstaller')}
-        manifest = {'application': NAME, 'version': '1.0', 'target': 'Windows x64',
+        manifest = {'application': NAME, 'version': '1.1', 'target': 'Windows x64',
                     'source_archive_sha256': SOURCE_SHA256, 'exe_sha256': sha256(exe),
                     'packages': versions, 'smoke': smoke, 'unicode_path_smoke': unicode_smoke}
         (bundle / 'build_info.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')

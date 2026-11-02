@@ -7,7 +7,7 @@ on:
     paths:
       - '.github/workflows/build-ni6363-windows.yml'
       - 'tools/ni6363_windows/**'
-      - 'updates/NIUSB6363Reader_v1.zip'
+      - 'updates/NIUSB6363Reader_v1_1.zip'
 
 permissions:
   contents: write
@@ -37,10 +37,10 @@ jobs:
       - name: Store portable Windows ZIP
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: NIUSB6363Reader-1.0-Windows-x64
+          name: NIUSB6363Reader-1.1-Windows-x64
           path: |
-            updates/NIUSB6363Reader_v1_Windows_x64.zip
-            updates/NIUSB6363Reader_v1_Windows_x64.sha256
+            updates/NIUSB6363Reader_v1_1_Windows_x64.zip
+            updates/NIUSB6363Reader_v1_1_Windows_x64.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Publish direct-download ZIP in updates
@@ -48,10 +48,10 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- updates/NIUSB6363Reader_v1_Windows_x64.zip updates/NIUSB6363Reader_v1_Windows_x64.sha256
+          git add -- updates/NIUSB6363Reader_v1_1_Windows_x64.zip updates/NIUSB6363Reader_v1_1_Windows_x64.sha256
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) { exit 0 }
-          git commit -m 'Publish tested NI USB6363 Reader 1.0 Windows x64 build [skip ci]'
+          git commit -m 'Publish tested NI USB6363 Reader 1.1 Windows x64 build [skip ci]'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git push origin HEAD:work
           exit $LASTEXITCODE
