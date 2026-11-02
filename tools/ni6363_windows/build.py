@@ -88,7 +88,8 @@ def main():
         subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v'],
                        cwd=source, check=True, timeout=120)
         subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
-                        '--onedir', '--windowed', '--collect-all', 'nidaqmx', '--name', NAME,
+                        '--onedir', '--windowed', '--collect-all', 'nidaqmx',
+                        '--recursive-copy-metadata', 'nidaqmx', '--name', NAME,
                         '--distpath', str(work / 'dist'), '--workpath', str(work / 'build'),
                         '--specpath', str(work / 'spec'), str(launcher)],
                        cwd=source, check=True, timeout=600)
