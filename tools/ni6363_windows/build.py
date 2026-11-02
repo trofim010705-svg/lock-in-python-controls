@@ -11,7 +11,7 @@ import sys
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = '43dd7ca554c759ef9a963be945943a0b2f54b67dcc1632cf4a151301c07deded'
+SOURCE_SHA256 = 'e61aaaa17d7590a96c98380325c123ca54215d5431d503751f8be66277dbc9b8'
 NAME = 'NIUSB6363Reader'
 
 
