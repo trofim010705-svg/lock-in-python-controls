@@ -31,7 +31,7 @@ jobs:
           python-version: '3.11'
           architecture: x64
       - name: Install Windows build dependencies
-        run: python -m pip install --only-binary=:all: -r tools/magnet_windows/requirements-build.txt
+        run: 'python -m pip install --only-binary=:all: -r tools/magnet_windows/requirements-build.txt'
       - name: Build and test Windows executable
         run: python tools/magnet_windows/build.py
       - name: Store portable Windows ZIP
