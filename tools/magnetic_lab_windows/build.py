@@ -11,7 +11,7 @@ import sys
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = 'ff28ce6451b703285a1479da6d2c49429fa7f199c1ffa29f821503b87db51a09'
+SOURCE_SHA256 = '74f9764e0c37bd076e7e7020f1e616c3cc5f455115636a40fc4d2357701073be'
 NAME = 'MagneticLab'
 
 
@@ -38,7 +38,8 @@ def test_executable(exe, report):
     try:
         subprocess.run([str(exe), '--self-test', str(report)], check=True, timeout=60)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        print('Frozen check failed; report: ' + (report.read_text(encoding='utf-8') if report.exists() else 'not created'), flush=True)
+        detail = json.loads(report.read_text(encoding='utf-8')) if report.exists() else {'error': 'report not created'}
+        print('Frozen check failed; report: ' + json.dumps({k: v for k, v in detail.items() if k != 'journal'}, ensure_ascii=True), flush=True)
         raise
     data = json.loads(report.read_text(encoding='utf-8'))
     if not data.get('ok') or not data.get('frozen') or data.get('qt_platform') != 'windows':

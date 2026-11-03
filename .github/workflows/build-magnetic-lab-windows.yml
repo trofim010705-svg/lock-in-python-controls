@@ -20,6 +20,9 @@ jobs:
   windows:
     runs-on: windows-2022
     timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      MPLBACKEND: Agg
     steps:
       - name: Checkout source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
