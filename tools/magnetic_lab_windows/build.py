@@ -12,7 +12,7 @@ import struct
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = 'e61e091ced26307bbbfee5e4f9b07182a80eb9e2fbcf225647caa79be8446fc7'
+SOURCE_SHA256 = '31d909cd7ed73c572f3c5d1bdeeea9d0c18e8a2931c4651d6154141015a54006'
 NAME = 'MagneticLab'
 
 
