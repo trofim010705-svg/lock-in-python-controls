@@ -100,7 +100,7 @@
       },
       {
         "old": "    window.offset.setValue(0)\n",
-        "new": "    window.offset.setValue(0)\n    window.after_measurement.setCurrentIndex(0)\n"
+        "new": "    window.offset.setValue(0)\n    window.after_measurement.setCurrentIndex(0)\n    window.measurement_mode.setCurrentIndex(0)\n"
       },
       {
         "old": "                finish(True, 'Manual flip/start, -1/0/+1 A sweep, matching NI average, data, figures and zero/off checked in demo.')",
