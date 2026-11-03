@@ -91,7 +91,8 @@ def main():
         subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
                         '--onedir', '--windowed', '--collect-all', 'nidaqmx',
                         '--recursive-copy-metadata', 'nidaqmx', '--collect-all', 'pyvisa',
-                        '--hidden-import', 'lockin_7230_usb', '--name', NAME,
+                        '--hidden-import', 'lockin_7230_usb',
+                        '--hidden-import', 'matplotlib.backends.backend_pdf', '--name', NAME,
                         '--distpath', str(work / 'dist'), '--workpath', str(work / 'build'),
                         '--specpath', str(work / 'spec'), str(launcher)],
                        cwd=source, check=True, timeout=600)
