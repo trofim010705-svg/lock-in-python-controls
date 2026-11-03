@@ -11,7 +11,7 @@ import sys
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = '74f9764e0c37bd076e7e7020f1e616c3cc5f455115636a40fc4d2357701073be'
+SOURCE_SHA256 = 'e61e091ced26307bbbfee5e4f9b07182a80eb9e2fbcf225647caa79be8446fc7'
 NAME = 'MagneticLab'
 
 
