@@ -1,0 +1,9 @@
+PyQt5==5.15.11
+numpy==2.2.6
+pyqtgraph==0.13.7
+nidaqmx==1.7.0
+PyVISA==1.16.2
+pyserial==3.5
+matplotlib==3.10.7
+PyInstaller==6.16.0
+pyinstaller-hooks-contrib==2025.9
