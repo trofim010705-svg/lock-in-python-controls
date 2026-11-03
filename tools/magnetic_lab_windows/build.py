@@ -1,4 +1,4 @@
-"""Build the verified MagneticLab 1.0 source archive on Windows x64."""
+"""Build the verified MagneticLab 1.1 source archive on Windows x64."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import struct
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
@@ -69,10 +70,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     script = Path(__file__).resolve()
     repo = script.parents[2] if len(script.parents) > 2 else script.parent
-    local_source = script.with_name('MagneticLab_v1.zip')
+    local_source = script.with_name('MagneticLab_v1_1.zip')
     archive_folder = script.parent if local_source.exists() else repo / 'updates'
-    parser.add_argument('--source', type=Path, default=archive_folder / 'MagneticLab_v1.zip')
-    parser.add_argument('--output', type=Path, default=archive_folder / 'MagneticLab_v1_Windows_x64.zip')
+    parser.add_argument('--source', type=Path, default=archive_folder / 'MagneticLab_v1_1.zip')
+    parser.add_argument('--output', type=Path, default=archive_folder / 'MagneticLab_v1_1_Windows_x64.zip')
     parser.add_argument('--prepare-only', action='store_true')
     args = parser.parse_args()
     if not args.prepare_only and (sys.platform != 'win32' or platform.architecture()[0] != '64bit'):
@@ -98,6 +99,10 @@ def main():
                        cwd=source, check=True, timeout=600)
         bundle = work / 'dist' / NAME
         exe = bundle / f'{NAME}.exe'
+        pe = exe.read_bytes()
+        offset = struct.unpack_from('<I', pe, 0x3c)[0]
+        assert pe[:2] == b'MZ' and pe[offset:offset+4] == b'PE\0\0'
+        assert struct.unpack_from('<H', pe, offset+4)[0] == 0x8664
         smoke = test_executable(exe, work / 'smoke.json')
         # Check loading Qt DLLs and its platform plugin from a Cyrillic directory too.
         unicode_bundle = work / 'Проверка_пути' / NAME
@@ -106,7 +111,7 @@ def main():
         print('Frozen application passed checks in ASCII and Cyrillic directories.', flush=True)
         versions = {name: importlib.metadata.version(name) for name in
                     ('PyQt5', 'PyQt5-Qt5', 'PyQt5-sip', 'numpy', 'pyqtgraph', 'nidaqmx', 'nitypes', 'PyVISA', 'pyserial', 'matplotlib', 'Pillow', 'PyInstaller')}
-        manifest = {'application': NAME, 'version': '1.0', 'target': 'Windows x64',
+        manifest = {'application': NAME, 'version': '1.1', 'target': 'Windows x64',
                     'source_archive_sha256': SOURCE_SHA256, 'exe_sha256': sha256(exe),
                     'packages': versions, 'smoke': smoke, 'unicode_path_smoke': unicode_smoke}
         (bundle / 'build_info.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -125,6 +130,8 @@ def main():
             for path in sorted(bundle.rglob('*')):
                 if path.is_file():
                     z.write(path, Path(NAME) / path.relative_to(bundle))
+        with ZipFile(args.output) as check:
+            assert check.testzip() is None
         checksum = sha256(args.output)
         args.output.with_suffix('.sha256').write_text(f'{checksum}  {args.output.name}\n', encoding='ascii')
         print(f'Built: {args.output}; {args.output.stat().st_size} bytes; SHA256={checksum}', flush=True)

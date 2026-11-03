@@ -1,0 +1,136 @@
+{
+  "base_sha256": "e61e091ced26307bbbfee5e4f9b07182a80eb9e2fbcf225647caa79be8446fc7",
+  "changes": {
+    "models.py": [
+      {
+        "old": "    name: str = 'measurement'\n",
+        "new": "    name: str = 'measurement'\n    zero_after: bool = True\n"
+      },
+      {
+        "old": "        if self.mode not in ('single', 'sweep'):\n            raise ValueError('Неизвестный режим измерения.')\n",
+        "new": "        if self.mode not in ('single', 'sweep'):\n            raise ValueError('Неизвестный режим измерения.')\n        if not isinstance(self.zero_after, bool):\n            raise ValueError('Выберите действие с током после измерения.')\n"
+      }
+    ],
+    "window.py": [
+      {
+        "old": "QHBoxLayout, QLabel, QLineEdit, QMenu, QPlainTextEdit",
+        "new": "QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit"
+      },
+      {
+        "old": "        self.settings = QSettings()\n",
+        "new": "        self.settings = QSettings()\n        self.default_fields = {}\n"
+      },
+      {
+        "old": "Magnetic Lab 1.0 · Lock-in / Magnet / NI AI3",
+        "new": "Magnetic Lab 1.1 · Lock-in / Magnet / NI AI3"
+      },
+      {
+        "old": "        edit = w.lineEdit()\n        edit.setContextMenuPolicy(Qt.CustomContextMenu)\n        def menu(pos):\n            m = edit.createStandardContextMenu()\n            m.addSeparator()\n            action = m.addAction('Сделать текущее значение значением по умолчанию')\n            if m.exec_(edit.mapToGlobal(pos)) is action:\n                self.settings.setValue('defaults/' + key, w.value())\n                self.settings.sync()\n                self.journal_line('Значение по умолчанию сохранено: ' + key)\n        edit.customContextMenuRequested.connect(menu)\n",
+        "new": "        w.setContextMenuPolicy(Qt.NoContextMenu)\n        w.lineEdit().setContextMenuPolicy(Qt.NoContextMenu)\n        self.default_fields[key] = w\n"
+      },
+      {
+        "old": "    @staticmethod\n    def group(parent, title):\n",
+        "new": "    def save_defaults(self):\n        try:\n            for field in self.default_fields.values():\n                field.interpretText()\n            self.calibration().validate()\n            for key, field in self.default_fields.items():\n                self.settings.setValue('defaults/' + key, field.value())\n            self.settings.setValue('defaults/measurement_mode', self.measurement_mode.currentIndex())\n            self.settings.setValue('defaults/zero_after', self.after_measurement.currentData())\n            self.settings.sync()\n            if self.settings.status() != QSettings.NoError:\n                raise OSError('Не удалось записать настройки пользователя.')\n            self.defaults_status.setText('Значения по умолчанию сохранены.')\n            self.journal_line('Сохранены параметры формы по умолчанию. Уставки приборов не менялись.')\n        except Exception as exc:\n            self.defaults_status.setText('Не удалось сохранить: ' + str(exc))\n            self.journal_line(self.defaults_status.text())\n\n    @staticmethod\n    def group(parent, title):\n"
+      },
+      {
+        "old": "        outer.addWidget(title)\n",
+        "new": "        header = QHBoxLayout()\n        header.addWidget(title, 1)\n        self.save_defaults_button = QPushButton('Сохранить значения по умолчанию')\n        self.save_defaults_button.setToolTip('Сохранить числовые параметры формы, режим измерения и действие после завершения для следующих запусков. Команды приборам не отправляются.')\n        self.save_defaults_button.clicked.connect(self.save_defaults)\n        header.addWidget(self.save_defaults_button)\n        outer.addLayout(header)\n"
+      },
+      {
+        "old": "                       'k=1 и b=0 — начальные значения, задайте калибровку датчика.\\n'\n                       'Правая кнопка по полю сохраняет значение по умолчанию.')",
+        "new": "                       'k=1 и b=0 — начальные значения, задайте калибровку датчика.')"
+      },
+      {
+        "old": "        self.scan_box, form = self.group(controls, 'Измерение')\n",
+        "new": "        self.defaults_status = QLabel('Кнопка вверху сохраняет числовые параметры всей формы.')\n        self.defaults_status.setWordWrap(True)\n        self.defaults_status.setStyleSheet('color:#64748b; font-size:11px;')\n        form.addRow(self.defaults_status)\n        self.scan_box, form = self.group(controls, 'Измерение')\n"
+      },
+      {
+        "old": "        self.measurement_mode.addItems(['Проход по току', 'Одно измерение · ток не менять'])\n",
+        "new": "        self.measurement_mode.addItems(['Проход по току', 'Одно измерение · ток не менять'])\n        self.measurement_mode.setCurrentIndex(int(self.settings.value('defaults/measurement_mode', 0)))\n"
+      },
+      {
+        "old": "        self.intervals.setValue(10)\n",
+        "new": "        self.intervals.setValue(int(self.settings.value('defaults/intervals', 10)))\n        self.intervals.setContextMenuPolicy(Qt.NoContextMenu)\n        self.intervals.lineEdit().setContextMenuPolicy(Qt.NoContextMenu)\n        self.default_fields['intervals'] = self.intervals\n"
+      },
+      {
+        "old": "        form.addRow('Задержка после тока, s', self.settle)\n",
+        "new": "        form.addRow('Задержка после тока, s', self.settle)\n        self.after_measurement = QComboBox()\n        self.after_measurement.addItem('Обнулить ток и выключить выход', True)\n        self.after_measurement.addItem('Оставить конечную уставку', False)\n        self.after_measurement.setCurrentIndex(0 if self.settings.value('defaults/zero_after', True, type=bool) else 1)\n        form.addRow(QLabel('После успешного измерения:'))\n        form.addRow(self.after_measurement)\n        after_hint = QLabel('При Stop, ошибке и закрытии программы ток обнуляется.')\n        after_hint.setWordWrap(True)\n        after_hint.setStyleSheet('color:#64748b; font-size:11px;')\n        form.addRow(after_hint)\n        self.after_measurement.currentIndexChanged.connect(self.grid_changed)\n"
+      },
+      {
+        "old": "Измерение при текущем токе. После завершения ток обнуляется.",
+        "new": "Измерение при текущем токе. Действие после завершения выбирается ниже."
+      },
+      {
+        "old": "            folder=self.folder.text(), name=self.session_name.text())",
+        "new": "            folder=self.folder.text(), name=self.session_name.text(), zero_after=self.after_measurement.currentData())"
+      },
+      {
+        "old": "        if not self.runner.magnet_connected:\n",
+        "new": "        if result['reason'] == 'complete' and result.get('finish_action') == 'held':\n            message = 'Готово. Конечная уставка сохранена; режим ожидания.'\n        if not self.runner.magnet_connected:\n"
+      },
+      {
+        "old": "        for w in (self.slope, self.offset, self.scan_box, self.data_box):",
+        "new": "        for w in (self.slope, self.offset, self.scan_box, self.data_box, self.save_defaults_button):"
+      }
+    ],
+    "experiment.py": [
+      {
+        "old": "Magnetic Lab 1.0",
+        "new": "Magnetic Lab 1.1"
+      },
+      {
+        "old": "    def run(self):\n",
+        "new": "    def zero_on_finish(self, info):\n        \"\"\"Stop must not cancel the zero/off command itself.\"\"\"\n        self.changed.emit('Обнуление тока и выключение выхода…')\n        try:\n            info['magnet_final'] = self.magnet.call('zero', timeout=90)\n            info['magnet_finish_action'] = 'zeroed'\n            return ''\n        except Exception as exc:\n            info['magnet_finish_action'] = 'zero_failed'\n            self.log.emit('Не удалось подтвердить обнуление магнита: ' + str(exc))\n            return str(exc)\n\n    def run(self):\n"
+      },
+      {
+        "start_marker": "        finally:\n            # No cancellation token here:",
+        "new": "        finally:\n            info['magnet_finish_requested'] = 'zero' if p.zero_after else 'hold'\n            info['magnet_finish_action'] = 'not_connected'\n            held = False\n            if reason == 'complete' and self.stop_event.is_set():\n                reason = 'error' if self.abort_error else 'stopped'\n                error = self.abort_error or 'Остановлено пользователем.'\n            if self.magnet_connected:\n                if reason == 'complete' and not p.zero_after:\n                    self.changed.emit('Конечная уставка сохраняется. Чтение состояния источника…')\n                    try:\n                        info['magnet_final'] = self.magnet.call('read', timeout=90)\n                        info['magnet_finish_action'] = 'held'\n                        held = True\n                    except Exception as exc:\n                        error = 'Не удалось прочитать конечное состояние магнита: ' + str(exc)\n                        reason = 'error'\n                if not held:\n                    cleanup_error = self.zero_on_finish(info)\n                    if cleanup_error:\n                        reason = 'error'\n            info.update(finished=now(), result=reason, error=error, cleanup_error=cleanup_error)\n            if self.folder is not None:\n                try:\n                    save_summary(self.folder, points, info)\n                    if points:\n                        suffix = (' Конечная уставка сохраняется.' if held else\n                                  ' Ток уже обнулён.' if self.magnet_connected and not cleanup_error else '')\n                        self.changed.emit('Сохранение графиков…' + suffix)\n                        save_figures(self.folder, points, info.get('lockin', {}).get('signal_unit', 'V'))\n                except Exception as exc:\n                    error += '\\nОшибка сохранения сводки: ' + str(exc)\n                    reason = 'error'\n                    if held:\n                        cleanup_error = self.zero_on_finish(info)\n                        held = False\n                    info.update(result=reason, error=error, cleanup_error=cleanup_error)\n                    try:\n                        save_summary(self.folder, points, info)\n                    except Exception:\n                        pass\n            # Stop or an NI fault may arrive while the PNG/PDF files are rendered.\n            if reason == 'complete' and self.stop_event.is_set():\n                reason = 'error' if self.abort_error else 'stopped'\n                error = self.abort_error or 'Остановлено при завершении измерения.'\n                if held:\n                    cleanup_error = self.zero_on_finish(info)\n                    held = False\n                if cleanup_error:\n                    reason = 'error'\n                info.update(result=reason, error=error, cleanup_error=cleanup_error)\n                if self.folder is not None:\n                    try:\n                        save_summary(self.folder, points, info)\n                    except Exception as exc:\n                        reason = 'error'\n                        error += '\\nОшибка сохранения: ' + str(exc)\n            self.outcome.emit({'reason': reason, 'error': error, 'cleanup_error': cleanup_error,\n                'finish_action': info['magnet_finish_action'],\n                'folder': str(self.folder) if self.folder else '', 'points': points,\n                'metadata': info, 'unsaved': self.unsaved is not None})\n"
+      }
+    ],
+    "tests/test_experiment.py": [
+      {
+        "old": "\n\nif __name__ == '__main__':\n",
+        "new": "\n    def test_hold_preserves_final_current_and_records_policy(self):\n        runner = self.runner(replace(self.parameters, zero_after=False))\n        runner.run()\n        result = self.outcome[-1]\n        self.assertEqual(result['reason'], 'complete')\n        self.assertEqual(result['finish_action'], 'held')\n        self.assertEqual(self.magnet.current, 1)\n        self.assertNotIn('zero', [job for job, _ in self.magnet.calls])\n        self.assertEqual(result['metadata']['magnet_finish_requested'], 'hold')\n        self.assertFalse(result['metadata']['parameters']['zero_after'])\n\n    def test_single_hold_does_not_change_current(self):\n        self.magnet.current = 5\n        runner = self.runner(replace(self.parameters, mode='single', zero_after=False))\n        runner.run()\n        self.assertEqual(self.outcome[-1]['finish_action'], 'held')\n        self.assertEqual(self.magnet.current, 5)\n        self.assertEqual([job for job, _ in self.magnet.calls], ['read', 'read'])\n\n    def test_stop_overrides_hold(self):\n        runner = self.runner(replace(self.parameters, zero_after=False))\n        self.lockin.on_sample = runner.stop\n        runner.run()\n        self.assertEqual(self.outcome[-1]['reason'], 'stopped')\n        self.assertEqual(self.outcome[-1]['finish_action'], 'zeroed')\n        self.assertEqual(self.magnet.current, 0)\n\n    def test_point_save_error_overrides_hold(self):\n        runner = self.runner(replace(self.parameters, zero_after=False))\n        with patch('experiment.save_point', side_effect=OSError('disk full')):\n            runner.run()\n        self.assertEqual(self.outcome[-1]['reason'], 'error')\n        self.assertEqual(self.magnet.current, 0)\n\n    def test_figure_export_error_zeros_previously_held_current(self):\n        runner = self.runner(replace(self.parameters, zero_after=False))\n        with patch('experiment.save_figures', side_effect=OSError('PNG failed')):\n            runner.run()\n        self.assertEqual(self.outcome[-1]['reason'], 'error')\n        self.assertEqual(self.outcome[-1]['finish_action'], 'zeroed')\n        self.assertEqual(self.magnet.current, 0)\n\n    def test_stop_during_figure_export_zeros_held_current(self):\n        runner = self.runner(replace(self.parameters, zero_after=False))\n        with patch('experiment.save_figures', side_effect=lambda *args: runner.stop()):\n            runner.run()\n        self.assertEqual(self.outcome[-1]['reason'], 'stopped')\n        self.assertEqual(self.outcome[-1]['finish_action'], 'zeroed')\n        self.assertEqual(self.magnet.current, 0)\n\n\nif __name__ == '__main__':\n"
+      }
+    ],
+    "selftest.py": [
+      {
+        "old": "    from PyQt5.QtCore import QTimer, QSettings\n",
+        "new": "    from PyQt5.QtCore import QTimer, QSettings, Qt, QPoint\n    from PyQt5.QtGui import QContextMenuEvent\n"
+      },
+      {
+        "old": "    window.offset.setValue(0)\n",
+        "new": "    window.offset.setValue(0)\n    window.after_measurement.setCurrentIndex(0)\n"
+      },
+      {
+        "old": "                finish(True, 'Manual flip/start, -1/0/+1 A sweep, matching NI average, data, figures and zero/off checked in demo.')",
+        "new": "                outcome['normal_finish_zeroed'] = True\n                phase = 'hold_prepare'\n                window.after_measurement.setCurrentIndex(1)\n                window.manual_magnet('set_current')\n            elif phase == 'hold_prepare' and not window.mag_busy:\n                assert window.mag_state['values']['OUT?']\n                window.measurement_mode.setCurrentIndex(1)\n                window.session_name.setText('hold_test')\n                phase = 'hold'\n                window.start_experiment()\n            elif phase == 'hold' and window.exclusive == 'idle':\n                result = getattr(window, 'last_outcome', {})\n                if result.get('metadata', {}).get('parameters', {}).get('zero_after', True):\n                    return\n                assert result['reason'] == 'complete', result.get('error')\n                assert result['finish_action'] == 'held'\n                assert window.mag_state['values']['OUT?']\n                assert window.mag_state['values']['PC?'] == 1\n                before = len(window.mag_worker.driver.source.writes)\n                window.save_defaults_button.click()\n                assert 'сохранены' in window.defaults_status.text()\n                assert window.settings.value('defaults/zero_after', True, type=bool) is False\n                assert len(window.mag_worker.driver.source.writes) == before\n                for field in window.default_fields.values():\n                    assert field.contextMenuPolicy() == Qt.NoContextMenu\n                    event = QContextMenuEvent(QContextMenuEvent.Mouse, QPoint(3, 3), QPoint(3, 3))\n                    app.sendEvent(field.lineEdit(), event)\n                assert app.activePopupWidget() is None\n                outcome['hold_finish_preserved_current'] = True\n                outcome['defaults_button_saved'] = True\n                outcome['numeric_right_click_no_popup'] = True\n                window.refresh_dashboard()\n                window.grab().save(str(report.parent / 'preview_hold.png'))\n                finish(True, 'Default zero and optional hold, preferences button, right-click handling, signed sweep, files and clean shutdown checked in demo.')"
+      },
+      {
+        "old": "    outcome['ok'] = bool(outcome['ok'] and outcome['threads_stopped'])",
+        "new": "    outcome['close_zeroed_current'] = window.plant.get_current() == 0\n    outcome['ok'] = bool(outcome['ok'] and outcome['threads_stopped'] and outcome['close_zeroed_current'])"
+      }
+    ],
+    "README_RU.md": [
+      {
+        "old": "# Magnetic Lab 1.0",
+        "new": "# Magnetic Lab 1.1"
+      },
+      {
+        "old": "Правая кнопка по числовому полю → «Сделать текущее значение значением\nпо умолчанию» сохраняет значение между запусками.",
+        "new": "Вверху первой вкладки есть отдельная кнопка **«Сохранить значения по умолчанию»**.\nОна запоминает числовые параметры всей формы, число шагов, режим измерения\nи выбранное действие после завершения. Сохранённые значения загружаются\nпри следующем запуске. Команды приборам при этом не отправляются.\nКонтекстное меню числовых полей отключено: правая кнопка ничего не открывает."
+      },
+      {
+        "old": "6. Программа переходит к следующему току. После окончания, Stop или ошибки\n   ток обнуляется и выход выключается. Затем сохраняются картинки и возвращается\n   обычный опрос приборов без записи данных.",
+        "new": "6. Программа переходит к следующему току. После успешного окончания действует\n   выбор **«После успешного измерения»**: обнулить ток / выключить выход\n   (по умолчанию) либо оставить конечную уставку и состояние выхода.\n   Затем сохраняются картинки и возвращается обычный опрос без записи данных.\n   Выбор и фактическое действие записываются в experiment.txt.\n\nЕсли выбрано «Оставить конечную уставку», новых команд PC/PV/OUT для удержания\nне отправляется — источник остаётся в состоянии последней точки. Если последняя\nточка была нулевой, выход остаётся выключенным. При **Stop, ошибке измерения,\nошибке сохранения и закрытии программы** ток всё равно обнуляется. Ошибка при\nэкспорте PNG/PDF также отменяет удержание тока."
+      },
+      {
+        "old": "одна точка при текущем поле. По окончании подключённый магнит также обнуляется.",
+        "new": "одна точка при текущем поле. По окончании применяется тот же выбор действия с током."
+      }
+    ]
+  },
+  "files": {
+    "tests/test_window.py": "import tempfile\nimport time\nimport unittest\nfrom types import SimpleNamespace\n\nfrom PyQt5.QtCore import QSettings, Qt, QPoint\nfrom PyQt5.QtGui import QContextMenuEvent\nfrom PyQt5.QtWidgets import QApplication\n\nfrom window import LabWindow\n\n\nclass WindowTests(unittest.TestCase):\n    @classmethod\n    def setUpClass(cls):\n        cls.app = QApplication.instance() or QApplication([])\n        cls.app.setOrganizationName('LabToolsTests')\n        cls.app.setApplicationName('MagneticLabPreferences')\n        cls.temp = tempfile.TemporaryDirectory()\n        QSettings.setDefaultFormat(QSettings.IniFormat)\n        QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, cls.temp.name)\n\n    @classmethod\n    def tearDownClass(cls):\n        cls.temp.cleanup()\n\n    def setUp(self):\n        QSettings().clear()\n        self.windows = []\n        self.window = self.make_window()\n\n    def make_window(self):\n        window = LabWindow(SimpleNamespace(demo=True, serial=None, timeout=2000, max_frequency=120000))\n        self.windows.append(window)\n        return window\n\n    def tearDown(self):\n        for window in self.windows:\n            window.close()\n        end = time.perf_counter() + 3\n        while time.perf_counter() < end:\n            self.app.processEvents()\n            if all(w.thread_stopped and not w.mag_thread.isRunning() for w in self.windows):\n                break\n            time.sleep(.005)\n        self.assertTrue(all(w.thread_stopped and not w.mag_thread.isRunning() for w in self.windows))\n\n    def test_right_click_does_not_open_a_numeric_context_menu(self):\n        for widget in self.window.default_fields.values():\n            self.assertEqual(widget.contextMenuPolicy(), Qt.NoContextMenu)\n            self.assertEqual(widget.lineEdit().contextMenuPolicy(), Qt.NoContextMenu)\n            event = QContextMenuEvent(QContextMenuEvent.Mouse, QPoint(3, 3), QPoint(3, 3))\n            self.app.sendEvent(widget.lineEdit(), event)\n        self.assertIsNone(self.app.activePopupWidget())\n\n    def test_button_saves_and_reloads_values_and_end_policy(self):\n        w = self.window\n        w.slope.setValue(2.5)\n        w.offset.setValue(-7)\n        w.current_start.setValue(-5)\n        w.intervals.setValue(20)\n        w.after_measurement.setCurrentIndex(1)\n        w.save_defaults_button.click()\n        self.assertIn('сохранены', w.defaults_status.text())\n        other = self.make_window()\n        self.assertEqual(other.slope.value(), 2.5)\n        self.assertEqual(other.offset.value(), -7)\n        self.assertEqual(other.current_start.value(), -5)\n        self.assertEqual(other.intervals.value(), 20)\n        self.assertFalse(other.after_measurement.currentData())\n        self.assertFalse(other.parameters().zero_after)\n\n    def test_invalid_calibration_is_not_saved_as_default(self):\n        w = self.window\n        w.slope.setValue(0)\n        w.save_defaults_button.click()\n        self.assertIn('Не удалось', w.defaults_status.text())\n        self.assertFalse(w.settings.contains('defaults/calibration_slope'))\n\n\nif __name__ == '__main__':\n    unittest.main()\n"
+  }
+}
