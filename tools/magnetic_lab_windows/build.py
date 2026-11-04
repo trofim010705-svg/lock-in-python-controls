@@ -1,4 +1,4 @@
-"""Build the verified MagneticLab 1.2 source archive on Windows x64."""
+"""Build the verified MagneticLab 1.3 source archive on Windows x64."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -12,7 +12,7 @@ import struct
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = 'f326f78dcead16d61eaa3d277b8ed051f6033905b49bc01051b2d5337b940b1b'
+SOURCE_SHA256 = '36811c0ff4e54b9f203f40672c6d51e9a5336d357bb29d33657f767e30866a83'
 NAME = 'MagneticLab'
 
 
@@ -70,10 +70,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     script = Path(__file__).resolve()
     repo = script.parents[2] if len(script.parents) > 2 else script.parent
-    local_source = script.with_name('MagneticLab_v1_2.zip')
+    local_source = script.with_name('MagneticLab_v1_3.zip')
     archive_folder = script.parent if local_source.exists() else repo / 'updates'
-    parser.add_argument('--source', type=Path, default=archive_folder / 'MagneticLab_v1_2.zip')
-    parser.add_argument('--output', type=Path, default=archive_folder / 'MagneticLab_v1_2_Windows_x64.zip')
+    parser.add_argument('--source', type=Path, default=archive_folder / 'MagneticLab_v1_3.zip')
+    parser.add_argument('--output', type=Path, default=archive_folder / 'MagneticLab_v1_3_Windows_x64.zip')
     parser.add_argument('--prepare-only', action='store_true')
     args = parser.parse_args()
     if not args.prepare_only and (sys.platform != 'win32' or platform.architecture()[0] != '64bit'):
@@ -111,7 +111,7 @@ def main():
         print('Frozen application passed checks in ASCII and Cyrillic directories.', flush=True)
         versions = {name: importlib.metadata.version(name) for name in
                     ('PyQt5', 'PyQt5-Qt5', 'PyQt5-sip', 'numpy', 'pyqtgraph', 'nidaqmx', 'nitypes', 'PyVISA', 'pyserial', 'matplotlib', 'Pillow', 'PyInstaller')}
-        manifest = {'application': NAME, 'version': '1.2', 'target': 'Windows x64',
+        manifest = {'application': NAME, 'version': '1.3', 'target': 'Windows x64',
                     'source_archive_sha256': SOURCE_SHA256, 'exe_sha256': sha256(exe),
                     'packages': versions, 'smoke': smoke, 'unicode_path_smoke': unicode_smoke}
         (bundle / 'build_info.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
