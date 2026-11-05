@@ -51,7 +51,15 @@ def licenses(bundle):
     for name in ('PyQt5','PyQt5-Qt5','PyQt5-sip','numpy','matplotlib','Pillow','cycler',
                  'contourpy','kiwisolver','fonttools','python-dateutil','six','packaging',
                  'PyInstaller','pyinstaller-hooks-contrib'):
-        dist=importlib.metadata.distribution(name)
+        try:
+            dist=importlib.metadata.distribution(name)
+        except importlib.metadata.PackageNotFoundError:
+            if name in ('PyQt5','PyQt5-Qt5','PyQt5-sip','numpy','matplotlib','Pillow','PyInstaller'):
+                raise
+            # Transitive dependencies can disappear from newer wheels (e.g. six).
+            # Nothing from an uninstalled distribution is present to redistribute.
+            print('Optional distribution not installed: '+name,flush=True)
+            continue
         for entry in dist.files or ():
             if any(word in Path(entry).name.lower() for word in ('license','copying','copyright')):
                 p=Path(dist.locate_file(entry))
