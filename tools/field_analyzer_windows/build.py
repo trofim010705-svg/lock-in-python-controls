@@ -13,7 +13,7 @@ import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
 NAME='MagneticFieldAnalyzer'
-SOURCE_SHA256='0f92d04d44201f9ade2531eb3a3aa6622e7fa96f8a94cdfe7399de77e2bf04b0'
+SOURCE_SHA256='b85ddb17336519eac15d22aa1f32ce6036a5d30a1bf6da2be6fc916c44258c6a'
 
 
 def sha256(path):
