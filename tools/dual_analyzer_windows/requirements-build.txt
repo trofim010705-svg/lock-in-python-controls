@@ -1,0 +1,6 @@
+PyQt5==5.15.11
+numpy==2.2.6
+matplotlib==3.10.7
+PyInstaller==6.16.0
+pyinstaller-hooks-contrib==2025.9
+scipy==1.15.3
