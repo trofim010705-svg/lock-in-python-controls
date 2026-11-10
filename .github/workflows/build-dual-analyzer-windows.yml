@@ -7,7 +7,7 @@ on:
     paths:
       - '.github/workflows/build-dual-analyzer-windows.yml'
       - 'tools/dual_analyzer_windows/**'
-      - 'updates/PumpProbeDualAnalyzer_v8_1.zip'
+      - 'updates/PumpProbeDualAnalyzer_v8_2.zip'
 
 permissions:
   contents: write
@@ -43,12 +43,12 @@ jobs:
       - name: Store tested Windows package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: PumpProbeDualAnalyzer-v8.1-Windows-x64
+          name: PumpProbeDualAnalyzer-v8.2-Windows-x64
           path: |
-            updates/PumpProbeDualAnalyzer_v8_1.zip
-            updates/PumpProbeDualAnalyzer_v8_1.sha256
-            updates/PumpProbeDualAnalyzer_v8_1_Windows_x64.zip
-            updates/PumpProbeDualAnalyzer_v8_1_Windows_x64.sha256
+            updates/PumpProbeDualAnalyzer_v8_2.zip
+            updates/PumpProbeDualAnalyzer_v8_2.sha256
+            updates/PumpProbeDualAnalyzer_v8_2_Windows_x64.zip
+            updates/PumpProbeDualAnalyzer_v8_2_Windows_x64.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Publish tested downloadable release
@@ -57,6 +57,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          $tag = 'pump-probe-dual-analyzer-v8-1'
-          gh release create $tag updates/PumpProbeDualAnalyzer_v8_1_Windows_x64.zip updates/PumpProbeDualAnalyzer_v8_1_Windows_x64.sha256 --target $env:GITHUB_SHA --title 'Pump-Probe Dual Analyzer v8.1: common fit reference and aligned formulas' --notes 'Both fit formulas use t=delay-t_ref with Gamma0 notation and explicit trigonometric arguments. The response is theta2. Figure footers omit R-squared, RMSE, and fit-window text. Modulation parameters and covariance are consistently referenced to t_ref. Windows x64 executable tested in ASCII and Cyrillic paths.'
+          $tag = 'pump-probe-dual-analyzer-v8-2'
+          gh release create $tag updates/PumpProbeDualAnalyzer_v8_2_Windows_x64.zip updates/PumpProbeDualAnalyzer_v8_2_Windows_x64.sha256 --target $env:GITHUB_SHA --title 'Pump-Probe Dual Analyzer v8.2: calibrated quadratures and compact fits' --notes 'X2/Y2 calibrated to radians before fitting; single-sine X1 reference with Gamma0, omega0, A0, phi0; separate four-parameter X2/Y2 modulation summaries. Compact formulas and reports omit sums, constants, fit reference captions and FFT lists. Fitted offsets and detailed JSON remain available. Windows x64 executable tested in ASCII and Cyrillic paths.'
           exit $LASTEXITCODE
