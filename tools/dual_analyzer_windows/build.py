@@ -1,4 +1,4 @@
-"""Build and verify the Pump-Probe Dual Analyzer v8.2 on native Windows x64."""
+"""Build and verify the Pump-Probe Dual Analyzer v8.3 on native Windows x64."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -13,7 +13,7 @@ import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
 NAME='PumpProbeDualAnalyzer'
-SOURCE_SHA256='072654e378c7e496264907ae36a3e6bf545546f673b247f93c04ff1efb874bbc'
+SOURCE_SHA256='e33c0c53834bab2b690522b5ee9f342f6ce00f6ae091e05ee3f1882db78519c3'
 
 
 def sha256(path):
@@ -46,6 +46,7 @@ def smoke(exe, report):
     assert result['fixed_delta_f_verified']
     assert result['common_t_ref_verified'] and result['aligned_formulas_and_clean_footer']
     assert result['second_channel_radians_verified'] and result['single_sine_compact_report_verified']
+    assert result['angular_frequency_shift_verified']
     print(json.dumps(result,ensure_ascii=True),flush=True)
     return result
 
@@ -79,8 +80,8 @@ def main():
     script=Path(__file__).resolve()
     repo=script.parents[2]
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--source',type=Path,default=repo/'updates/PumpProbeDualAnalyzer_v8_2.zip')
-    parser.add_argument('--output',type=Path,default=repo/'updates/PumpProbeDualAnalyzer_v8_2_Windows_x64.zip')
+    parser.add_argument('--source',type=Path,default=repo/'updates/PumpProbeDualAnalyzer_v8_3.zip')
+    parser.add_argument('--output',type=Path,default=repo/'updates/PumpProbeDualAnalyzer_v8_3_Windows_x64.zip')
     parser.add_argument('--prepare-only',action='store_true')
     args=parser.parse_args()
     if not args.prepare_only and (sys.platform!='win32' or platform.architecture()[0]!='64bit'):
@@ -111,7 +112,7 @@ def main():
         second=smoke(unicode_bundle/exe.name,work/'тест_кириллица'/'report.json')
         print('Frozen Windows application passed ASCII and Cyrillic path checks.',flush=True)
         versions={name:importlib.metadata.version(name) for name in ('PyQt5','PyQt5-Qt5','numpy','scipy','matplotlib','Pillow','PyInstaller')}
-        metadata={'application':NAME,'version':'8.2','target':'Windows x64',
+        metadata={'application':NAME,'version':'8.3','target':'Windows x64',
             'source_archive_sha256':SOURCE_SHA256,'exe_sha256':sha256(exe),
             'packages':versions,'smoke':first,'unicode_path_smoke':second}
         (bundle/'build_info.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2),encoding='utf-8')
