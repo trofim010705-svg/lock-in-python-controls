@@ -1,4 +1,4 @@
-"""Build the verified MagneticLab 1.3 source archive on Windows x64."""
+"""Build the verified MagneticLab 1.4 source archive on Windows x64."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -12,7 +12,7 @@ import struct
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = '36811c0ff4e54b9f203f40672c6d51e9a5336d357bb29d33657f767e30866a83'
+SOURCE_SHA256 = '570834b0f5788412ce98fabee118f97d5b0e2d63b796e4ec5c31abea840748ab'
 NAME = 'MagneticLab'
 
 
@@ -37,7 +37,7 @@ def extract_source(archive, destination):
 
 def test_executable(exe, report):
     try:
-        subprocess.run([str(exe), '--self-test', str(report)], check=True, timeout=60)
+        subprocess.run([str(exe), '--self-test', str(report)], check=True, timeout=90)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         detail = json.loads(report.read_text(encoding='utf-8')) if report.exists() else {'error': 'report not created'}
         print('Frozen check failed; report: ' + json.dumps({k: v for k, v in detail.items() if k != 'journal'}, ensure_ascii=True), flush=True)
@@ -45,6 +45,8 @@ def test_executable(exe, report):
     data = json.loads(report.read_text(encoding='utf-8'))
     if not data.get('ok') or not data.get('frozen') or data.get('qt_platform') != 'windows':
         raise RuntimeError(f'Frozen Windows GUI check failed: {data}')
+    assert data.get('hysteresis_round_trip_verified') and data.get('hysteresis_no_turnaround_zero')
+    assert data.get('hysteresis_branch_files_and_plots')
     print(json.dumps(data, ensure_ascii=True), flush=True)
     return data
 
@@ -70,10 +72,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     script = Path(__file__).resolve()
     repo = script.parents[2] if len(script.parents) > 2 else script.parent
-    local_source = script.with_name('MagneticLab_v1_3.zip')
+    local_source = script.with_name('MagneticLab_v1_4.zip')
     archive_folder = script.parent if local_source.exists() else repo / 'updates'
-    parser.add_argument('--source', type=Path, default=archive_folder / 'MagneticLab_v1_3.zip')
-    parser.add_argument('--output', type=Path, default=archive_folder / 'MagneticLab_v1_3_Windows_x64.zip')
+    parser.add_argument('--source', type=Path, default=archive_folder / 'MagneticLab_v1_4.zip')
+    parser.add_argument('--output', type=Path, default=archive_folder / 'MagneticLab_v1_4_Windows_x64.zip')
     parser.add_argument('--prepare-only', action='store_true')
     args = parser.parse_args()
     if not args.prepare_only and (sys.platform != 'win32' or platform.architecture()[0] != '64bit'):
@@ -111,7 +113,7 @@ def main():
         print('Frozen application passed checks in ASCII and Cyrillic directories.', flush=True)
         versions = {name: importlib.metadata.version(name) for name in
                     ('PyQt5', 'PyQt5-Qt5', 'PyQt5-sip', 'numpy', 'pyqtgraph', 'nidaqmx', 'nitypes', 'PyVISA', 'pyserial', 'matplotlib', 'Pillow', 'PyInstaller')}
-        manifest = {'application': NAME, 'version': '1.3', 'target': 'Windows x64',
+        manifest = {'application': NAME, 'version': '1.4', 'target': 'Windows x64',
                     'source_archive_sha256': SOURCE_SHA256, 'exe_sha256': sha256(exe),
                     'packages': versions, 'smoke': smoke, 'unicode_path_smoke': unicode_smoke}
         (bundle / 'build_info.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
