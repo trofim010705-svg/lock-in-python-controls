@@ -1,9 +1,21 @@
 """Multiprocessing-only helper. Do not import GUI libraries in this executable."""
 import multiprocessing
+import multiprocessing.spawn
 import os
 from pathlib import Path
 import sys
 import traceback
+
+
+_worker_paths=list(sys.path)
+_original_prepare=multiprocessing.spawn.prepare
+
+
+def _prepare_worker(data):
+    # The GUI has a different frozen module archive. multiprocessing normally
+    # replaces sys.path with the parent's paths, hiding this worker's modules.
+    data=dict(data);data['sys_path']=_worker_paths
+    return _original_prepare(data)
 
 
 if __name__=='__main__':
@@ -14,6 +26,7 @@ if __name__=='__main__':
         sys.stdout=sys.stderr=log
         print('Executable:',sys.executable,'Args:',sys.argv,'Bundle:',getattr(sys,'_MEIPASS',None),flush=True)
     try:
+        multiprocessing.spawn.prepare=_prepare_worker
         multiprocessing.freeze_support()
     except SystemExit:
         raise
