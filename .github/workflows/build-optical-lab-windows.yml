@@ -7,7 +7,7 @@ on:
     paths:
       - '.github/workflows/build-optical-lab-windows.yml'
       - 'tools/optical_lab_windows/**'
-      - 'updates/OpticalMagneticLab_v1_1.zip'
+      - 'updates/OpticalMagneticLab_v1_2.zip'
 
 permissions:
   contents: write
@@ -40,12 +40,12 @@ jobs:
       - name: Store portable Windows ZIP
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: OpticalMagneticLab-1.1-Windows-x64
+          name: OpticalMagneticLab-1.2-Windows-x64
           path: |
-            updates/OpticalMagneticLab_v1_1.zip
-            updates/OpticalMagneticLab_v1_1.sha256
-            updates/OpticalMagneticLab_v1_1_Windows_x64.zip
-            updates/OpticalMagneticLab_v1_1_Windows_x64.sha256
+            updates/OpticalMagneticLab_v1_2.zip
+            updates/OpticalMagneticLab_v1_2.sha256
+            updates/OpticalMagneticLab_v1_2_Windows_x64.zip
+            updates/OpticalMagneticLab_v1_2_Windows_x64.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Publish tested downloadable release
@@ -54,6 +54,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          $tag = 'optical-magnetic-lab-v1.1'
-          gh release create $tag updates/OpticalMagneticLab_v1_1.zip updates/OpticalMagneticLab_v1_1.sha256 updates/OpticalMagneticLab_v1_1_Windows_x64.zip updates/OpticalMagneticLab_v1_1_Windows_x64.sha256 --target $env:GITHUB_SHA --title 'Optical Magnetic Lab 1.1: isolated NI driver compatibility' --notes 'Independent Qt-free NI worker executable; system NI C API nicaiu by default; read-only comparison of empty tasks through nicaiu/nicai_utf8 via diagnose_ni.bat; diagnostic runtime metadata and repeated-error throttling. Retains all optical formulas, Dual Harmonic acquisition, scan modes, data exports and hold/explicit-zero policy. Windows demos checked in ASCII and Cyrillic paths; physical NI driver compatibility requires testing on the target computer.'
+          $tag = 'optical-magnetic-lab-v1.2'
+          gh release create $tag updates/OpticalMagneticLab_v1_2.zip updates/OpticalMagneticLab_v1_2.sha256 updates/OpticalMagneticLab_v1_2_Windows_x64.zip updates/OpticalMagneticLab_v1_2_Windows_x64.sha256 --target $env:GITHUB_SHA --title 'Optical Magnetic Lab 1.2: dark subtraction and oscillator controls' --notes 'Handles unsupported AO_IdleOutputBehavior (-200452) using native on-demand DAC behavior without implicit zero writes. Adds two dark voltages after x25.2, corrected live displays and optical normalization, raw/scaled/corrected exports. Main-page oscillator amplitude/frequency controls with actual readback recorded before/after each point. Visible save-defaults button restores fields without changing instruments. Retains independent Qt-free NI worker, scan modes, Faraday plots and hold/explicit-zero policy. Windows demo checks include dark subtraction, oscillator apply/read and metadata, defaults, ASCII/Cyrillic paths. Physical hardware compatibility requires testing on the target computer.'
           exit $LASTEXITCODE

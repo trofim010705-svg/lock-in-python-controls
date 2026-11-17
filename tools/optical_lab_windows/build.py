@@ -1,4 +1,4 @@
-"""Build OpticalMagneticLab 1.1 with an independent Qt-free NI worker."""
+"""Build OpticalMagneticLab 1.2 with an independent Qt-free NI worker."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -13,7 +13,7 @@ import tempfile
 import os
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = '261aa21db86ff1c630fd92040460e3fd1898eed2fd9a7e9dd72509719fb6326e'
+SOURCE_SHA256 = 'c9893d37d80a41ad681339f4042b037e064f9f3320dfabd96a16dfed74e34de0'
 NAME = 'OpticalMagneticLab'
 
 
@@ -47,7 +47,8 @@ def test_executable(exe, report):
     data = json.loads(report.read_text(encoding='utf-8'))
     if not data.get('ok') or not data.get('frozen') or data.get('qt_platform') != 'windows':
         raise RuntimeError(f'Frozen Windows GUI check failed: {data}')
-    for flag in ('ni_children_without_qt','connect_does_not_write_ao','gain_live_verified','dual_internal_harmonics_verified','full_point_photo_normalization_verified',
+    for flag in ('dark_subtraction_verified','oscillator_controls_and_metadata_verified','defaults_saved_without_hardware_write',
+                 'ni_children_without_qt','connect_does_not_write_ao','gain_live_verified','dual_internal_harmonics_verified','full_point_photo_normalization_verified',
                  'arcseconds_verified','faraday_centered_verified','raw_daq_stream_verified',
                  'hysteresis_hold_verified','stop_preserves_ao_verified','explicit_finish_zero_verified',
                  'four_twin_axes_and_time_plots','close_preserved_ao','threads_stopped'):
@@ -84,10 +85,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     script = Path(__file__).resolve()
     repo = script.parents[2] if len(script.parents) > 2 else script.parent
-    local_source = script.with_name('OpticalMagneticLab_v1_1.zip')
+    local_source = script.with_name('OpticalMagneticLab_v1_2.zip')
     archive_folder = script.parent if local_source.exists() else repo / 'updates'
-    parser.add_argument('--source', type=Path, default=archive_folder / 'OpticalMagneticLab_v1_1.zip')
-    parser.add_argument('--output', type=Path, default=archive_folder / 'OpticalMagneticLab_v1_1_Windows_x64.zip')
+    parser.add_argument('--source', type=Path, default=archive_folder / 'OpticalMagneticLab_v1_2.zip')
+    parser.add_argument('--output', type=Path, default=archive_folder / 'OpticalMagneticLab_v1_2_Windows_x64.zip')
     parser.add_argument('--prepare-only', action='store_true')
     args = parser.parse_args()
     if not args.prepare_only and (sys.platform != 'win32' or platform.architecture()[0] != '64bit'):
@@ -149,7 +150,7 @@ def main():
         print('Frozen application passed checks in ASCII and Cyrillic directories.', flush=True)
         versions = {name: importlib.metadata.version(name) for name in
                     ('PyQt5', 'PyQt5-Qt5', 'PyQt5-sip', 'numpy', 'pyqtgraph', 'nidaqmx', 'nitypes', 'PyVISA', 'pyserial', 'matplotlib', 'Pillow', 'PyInstaller')}
-        manifest = {'application': NAME, 'version': '1.1', 'target': 'Windows x64',
+        manifest = {'application': NAME, 'version': '1.2', 'target': 'Windows x64',
                     'source_archive_sha256': SOURCE_SHA256, 'exe_sha256': sha256(exe),
                     'ni_worker_sha256':sha256(bundle/'NIWorker'/'OpticalNIWorker.exe'),
                     'packages': versions, 'smoke': smoke, 'unicode_path_smoke': unicode_smoke,
