@@ -1,7 +1,7 @@
-Optical Magnetic Lab 1.0 — NI AO0 / 7230 Dual Harmonic
+Optical Magnetic Lab 1.1 — NI AO0 / 7230 Dual Harmonic
 
 Распакуйте ВСЮ папку OpticalMagneticLab, запускайте OpticalMagneticLab.exe.
-_internal должен оставаться рядом. Python отдельно не нужен.
+_internal и NIWorker должны оставаться рядом. Python отдельно не нужен.
 Для реальных приборов нужны системные NI-DAQmx и NI-VISA / драйвер USB 7230.
 Закройте старый измеритель и NI MAX Test Panels перед подключением AI.
 
@@ -23,3 +23,9 @@ AO0 по умолчанию остаётся последним. Обнулен�
 
 Полная инструкция, формулы и подключение: Source/README_RU.md.
 Симулятор: OpticalMagneticLab.exe --demo. Проверки сборки используют симуляторы.
+
+В 1.1 драйвер NI работает в отдельном EXE без Qt. По умолчанию используется
+установленная в системе nicaiu.dll. При access violation запустите diagnose_ni.bat:
+будут проверены пустые задачи через nicaiu и nicai_utf8. Напряжение не записывается,
+каналы не добавляются, сброс NI не вызывается. Откроется ni_diagnostics.txt.
+Это аппаратная проверка загрузки драйвера на вашем компьютере; демо её не заменяет.
