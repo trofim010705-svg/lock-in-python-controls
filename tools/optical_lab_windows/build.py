@@ -10,9 +10,10 @@ import subprocess
 import sys
 import struct
 import tempfile
+import os
 from zipfile import ZipFile, ZIP_DEFLATED
 
-SOURCE_SHA256 = 'b27fb50fc2f3ea79ba2f70f1f8f6e374105da536e9ff88eb249b10f5f4d23191'
+SOURCE_SHA256 = '261aa21db86ff1c630fd92040460e3fd1898eed2fd9a7e9dd72509719fb6326e'
 NAME = 'OpticalMagneticLab'
 
 
@@ -41,6 +42,7 @@ def test_executable(exe, report):
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         detail = json.loads(report.read_text(encoding='utf-8')) if report.exists() else {'error': 'report not created'}
         print('Frozen check failed; report: ' + json.dumps({k: v for k, v in detail.items() if k != 'journal'}, ensure_ascii=True), flush=True)
+        dump_worker_logs()
         raise
     data = json.loads(report.read_text(encoding='utf-8'))
     if not data.get('ok') or not data.get('frozen') or data.get('qt_platform') != 'windows':
@@ -52,6 +54,13 @@ def test_executable(exe, report):
         assert data.get(flag), (flag, data)
     print(json.dumps(data, ensure_ascii=True), flush=True)
     return data
+
+
+def dump_worker_logs():
+    folder=os.environ.get('OPTICAL_NI_STARTUP_LOGDIR')
+    if folder:
+        for p in sorted(Path(folder).glob('*.log')):
+            print('Worker startup log '+p.name+':\n'+p.read_text(encoding='utf-8')[-12000:],flush=True)
 
 
 def copy_licenses(destination):
@@ -85,6 +94,7 @@ def main():
         parser.error('Run the Windows x64 build on Windows with Python 3.11 x64.')
     with tempfile.TemporaryDirectory(prefix='optical_lab_build_') as temporary:
         work = Path(temporary)
+        os.environ['OPTICAL_NI_STARTUP_LOGDIR']=str(work/'worker_logs')
         source = extract_source(args.source.resolve(), work / 'source')
         launcher = source / 'optical_lab_exe_launcher.py'
         shutil.copy2(Path(__file__).with_name('launcher.py'), launcher)
@@ -122,18 +132,20 @@ def main():
         offset = struct.unpack_from('<I', pe, 0x3c)[0]
         assert pe[:2] == b'MZ' and pe[offset:offset+4] == b'PE\0\0'
         assert struct.unpack_from('<H', pe, offset+4)[0] == 0x8664
-        smoke = test_executable(exe, work / 'smoke.json')
-        # Check loading Qt DLLs and its platform plugin from a Cyrillic directory too.
-        unicode_bundle = work / 'Проверка_пути' / NAME
-        shutil.copytree(bundle, unicode_bundle)
-        unicode_smoke = test_executable(unicode_bundle / exe.name, work / 'smoke_unicode.json')
         diagnostic_report=work/'ni_diagnostics.txt'
         diagnostic_process=subprocess.run([str(exe),'--ni-diagnostics',str(diagnostic_report)],timeout=90)
         assert diagnostic_process.returncode in (0,1)
         diagnostic=json.loads(diagnostic_report.read_text(encoding='utf-8'))
         assert diagnostic['output_writes']==0 and diagnostic['device_resets']==0
         assert len(diagnostic['checks'])==2
-        assert all(not check['runtime']['qt_loaded'] for check in diagnostic['checks'])
+        dump_worker_logs()
+        print('Isolated worker diagnostic: '+json.dumps(diagnostic,ensure_ascii=True),flush=True)
+        assert all('runtime' in check and not check['runtime']['qt_loaded'] for check in diagnostic['checks'])
+        smoke = test_executable(exe, work / 'smoke.json')
+        # Check loading Qt DLLs and its platform plugin from a Cyrillic directory too.
+        unicode_bundle = work / 'Проверка_пути' / NAME
+        shutil.copytree(bundle, unicode_bundle)
+        unicode_smoke = test_executable(unicode_bundle / exe.name, work / 'smoke_unicode.json')
         print('Frozen application passed checks in ASCII and Cyrillic directories.', flush=True)
         versions = {name: importlib.metadata.version(name) for name in
                     ('PyQt5', 'PyQt5-Qt5', 'PyQt5-sip', 'numpy', 'pyqtgraph', 'nidaqmx', 'nitypes', 'PyVISA', 'pyserial', 'matplotlib', 'Pillow', 'PyInstaller')}
