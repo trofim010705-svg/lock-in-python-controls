@@ -3,7 +3,7 @@
 
 USB and instrument logic: USB7230, Instrument, Worker.
 Widgets and validation: Field, Section, LockinWindow.
-Run: python gui_app.py [--demo] [--serial 14078415] [--max-frequency 250000]
+Run: python app.py [--demo] [--serial 14078415] [--max-frequency 250000]
 """
 import argparse
 import importlib
@@ -589,16 +589,6 @@ class DemoTransport:
                 raise CommandError(command, 3)
             self.data[key] = ','.join(args)
             return '', 1, 0
-        if name == '?' or name in ('XY1.', 'XY2.'):
-            position = getattr(self, 'scan_position', 0.)
-            envelope = math.exp(-((position-.5)/.25)**2)
-            signal = [1e-5*envelope, 3e-6*envelope*math.sin(position*10),
-                      2e-6*envelope*math.cos(position*35), 2e-6*envelope*math.sin(position*35)]
-            if name == '?':
-                signal = [signal[i] for i, bit in enumerate((0, 1, 17, 18)) if int(self.data['CBD']) & (1 << bit)]
-            else:
-                signal = signal[:2] if name == 'XY1.' else signal[2:]
-            return ','.join(map(str, signal)), 1, 0
         if key in self.data:
             return self.data[key], 1, 0
         if name.startswith('FRQ'):
@@ -610,7 +600,8 @@ class DemoTransport:
         if name in ('NHZ.', 'NN'):
             return '1e-8' if name.endswith('.') else '1', 1, 0
         if re.fullmatch(r'(X|Y|MAG|PHA)[12]?\.?', name):
-            value = 30 if name.startswith('PHA') else .001
+            t = time.monotonic()
+            value = (30 + 1.5*math.sin(t*23) + .4*math.cos(t*71)) if name.startswith('PHA') else .001*(1+.02*math.sin(t*31)+.01*math.cos(t*79))
             return str(value if name.endswith('.') else value*1e6), 1, 0
         raise CommandError(command, 3)
 
@@ -625,7 +616,6 @@ class Worker(QObject):
         super().__init__()
         self.args = demo, serial, timeout, sections, max_frequency
         self.instrument = None
-        self.acquisition = None
 
     @pyqtSlot(str, object)
     def execute(self, job, payload):
@@ -648,25 +638,7 @@ class Worker(QObject):
             if inst is None:
                 raise ValueError('Нет соединения с прибором')
             inst.legacy = payload.get('legacy', False)
-            if job == 'experiment_prepare':
-                from pump_probe.acquisition import LockInAcquisition
-                self.acquisition = LockInAcquisition(inst, demo=self.args[0])
-                try:
-                    metadata = self.acquisition.prepare()
-                except Exception:
-                    self.acquisition.restore()
-                    raise
-                self.result.emit(job, metadata)
-            elif job == 'experiment_sample':
-                if self.acquisition is None:
-                    raise ValueError('Сеанс измерений не подготовлен')
-                self.result.emit(job, self.acquisition.sample(payload['position']))
-            elif job == 'experiment_release':
-                if self.acquisition is not None:
-                    self.acquisition.restore()
-                    self.acquisition = None
-                self.result.emit(job, {})
-            elif job == 'read':
+            if job == 'read':
                 data = {}
                 for title in payload['titles']:
                     self.progress.emit('Чтение: '+title)
@@ -933,6 +905,7 @@ class Section(QGroupBox):
 
 
 class LockinWindow(QMainWindow):
+    worker_class = Worker
     request = pyqtSignal(str, object)
     stop_worker = pyqtSignal()
 
@@ -1068,7 +1041,7 @@ class LockinWindow(QMainWindow):
         self.interval.valueChanged.connect(self.schedule_poll)
         self.tabs.currentChanged.connect(self.page_changed)
         self.thread = QThread(self)
-        self.worker = Worker(args.demo, args.serial, args.timeout, self.sections_data, args.max_frequency)
+        self.worker = self.worker_class(args.demo, args.serial, args.timeout, self.sections_data, args.max_frequency)
         self.worker.moveToThread(self.thread)
         self.request.connect(self.worker.execute, Qt.QueuedConnection)
         self.stop_worker.connect(self.worker.shutdown, Qt.QueuedConnection)
@@ -1438,19 +1411,9 @@ class LockinWindow(QMainWindow):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--demo', action='store_true', help='GUI без VISA и прибора')
-    parser.add_argument('--serial', help='USB serial; по умолчанию из вашей библиотеки')
-    parser.add_argument('--timeout', type=int, default=2000, help='USB timeout, ms')
-    parser.add_argument('--max-frequency', type=int, choices=(120000, 250000), default=120000,
-                        help='250000 только с опцией 7230/99')
-    args = parser.parse_args()
-    if args.timeout <= 0:
-        parser.error('--timeout должен быть положительным')
-    app = QApplication(sys.argv[:1])
-    app.setStyle('Fusion')
-    window = LockinWindow(args); window.show()
-    return app.exec_()
+    # Keep the former entry point usable; both launch the current application.
+    from app import main as launch
+    return launch()
 
 
 if __name__ == '__main__':

@@ -1,0 +1,4 @@
+PyQt5==5.15.11
+pyserial==3.5
+PyInstaller==6.16.0
+pyinstaller-hooks-contrib==2025.9

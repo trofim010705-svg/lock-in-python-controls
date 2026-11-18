@@ -1,0 +1,683 @@
+SIGNAL RECOVERY 7230 · TIMED ACQUISITION
+Magn1: V; Phase1: degrees, as returned by the instrument.
+CONFIGURATION AND RESULT
+{
+  "application": "Lock-in Histogram 1.0",
+  "started_utc": "2026-11-02T08:29:57.240200+00:00",
+  "experiment": {
+    "sig_mv": 400.0,
+    "bal_mv": -200.0,
+    "acquisition_time_s": 2.4,
+    "delay_ms": 20.0,
+    "e_field": "2.1 kV/cm",
+    "h_field": "53.2 mT",
+    "additional": "Демонстрационные данные · без подключённого прибора"
+  },
+  "simulation": true,
+  "lockin": {
+    "raw_replies": {
+      "VER": "DEMO",
+      "REFMODE": "0",
+      "IMODE": "0",
+      "VMODE": "1",
+      "ACGAIN": "0",
+      "AUTOMATIC": "0",
+      "DCCOUPLE": "0",
+      "FET": "0",
+      "FLOAT": "1",
+      "LF": "0,0",
+      "FASTMODE": "0",
+      "SYNC": "0",
+      "NOISEMODE": "0",
+      "NNBUF": "4",
+      "OA.": "0.1",
+      "OF.": "1000",
+      "FSTART.": "100",
+      "FSTOP.": "1000",
+      "FSTEP.": "10,1",
+      "ASTART.": ".1",
+      "ASTOP.": ".5",
+      "ASTEP.": ".01",
+      "SRATE.": ".1",
+      "MENABLE": "0",
+      "FMCENTERF.": "1000",
+      "FMSPANF.": "0",
+      "FMCENTERV.": "0",
+      "FMVSPAN.": "0",
+      "FMFILTER": "0",
+      "AMSOURCE": "0",
+      "AMDEPTH": "10",
+      "AMCENTERV.": "0",
+      "AMVSPAN.": "0",
+      "AMFILTER": "0",
+      "PORTDIR": "0",
+      "BYTE": "0",
+      "READBYTE": "0",
+      "TADC": "0",
+      "ADC. 1": "0.001",
+      "ADC. 2": "0.002",
+      "ADC. 3": "0.003",
+      "ADC. 4": "0.004",
+      "RS": "12,1",
+      "DD": "44",
+      "REFMON": "0",
+      "EX": "0",
+      "IE": "0",
+      "VRLOCK": "0",
+      "FRQ.": "1000",
+      "REFN": "1",
+      "REFP.": "0",
+      "SEN": "18",
+      "TC": "9",
+      "SLOPE": "1",
+      "XOF": "0,0",
+      "YOF": "0,0",
+      "CH 1": "6",
+      "DAC. 1": "0",
+      "CH 2": "6",
+      "DAC. 2": "0",
+      "CH 3": "6",
+      "DAC. 3": "0",
+      "CH 4": "6",
+      "DAC. 4": "0",
+      "C1 1": "1",
+      "C2 1": "0",
+      "DEFEQU 1": "0,1,1,8,11",
+      "C1 2": "1",
+      "C2 2": "0",
+      "DEFEQU 2": "0,1,1,8,11"
+    },
+    "firmware": "DEMO",
+    "usb_resource": "DEMO",
+    "reference_mode_code": 0,
+    "input_mode_code": 0,
+    "magnitude_unit": "V",
+    "measurement_commands": [
+      "MAG.",
+      "PHA."
+    ],
+    "sections": {
+      "Input": {
+        "mode": 0,
+        "values": {
+          "input": 1,
+          "acgain": 0.0,
+          "automatic": 0.0,
+          "couple": 0.0,
+          "fet": 0.0,
+          "float": 1.0,
+          "lf": 0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "input": "Input mode",
+          "acgain": "AC gain",
+          "automatic": "Automatic AC gain",
+          "couple": "Input coupling",
+          "fet": "Input device",
+          "float": "Input shield",
+          "lf": "Line filter"
+        },
+        "display_values": {
+          "Input mode": "A (voltage)",
+          "AC gain": "0 dB",
+          "Automatic AC gain": "Off",
+          "Input coupling": "AC",
+          "Input device": "Bipolar",
+          "Input shield": "Float",
+          "Line filter": "Off"
+        }
+      },
+      "Demodulator": {
+        "mode": 0,
+        "values": {
+          "mode": 0.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "mode": "Mode",
+          "demod2": "Demod2 source"
+        },
+        "display_values": {
+          "Mode": "Single reference"
+        }
+      },
+      "Output filters / Noise": {
+        "mode": 0,
+        "values": {
+          "fast": 0.0,
+          "sync": 0.0,
+          "noise": 0.0,
+          "nnbuf": 4.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "fast": "Fast mode",
+          "sync": "Synchronous",
+          "noise": "Noise measurement",
+          "nnbuf": "Noise buffer"
+        },
+        "display_values": {
+          "Fast mode": "Off",
+          "Synchronous": "Off",
+          "Noise measurement": "Off",
+          "Noise buffer": "4 s"
+        }
+      },
+      "Oscillator output": {
+        "mode": 0,
+        "values": {
+          "oa": 0.1,
+          "of": 1000.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "oa": "Amplitude, V rms",
+          "of": "Frequency, Hz"
+        },
+        "display_values": {
+          "Amplitude, V rms": 0.1,
+          "Frequency, Hz": 1000.0
+        }
+      },
+      "Frequency / Amplitude Sweep": {
+        "mode": 0,
+        "values": {
+          "fstart": 100.0,
+          "fstop": 1000.0,
+          "fkind": 1.0,
+          "fstep": 10.0,
+          "astart": 0.1,
+          "astop": 0.5,
+          "astep": 0.01,
+          "srate": 0.1
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "fstart": "Start frequency, Hz",
+          "fstop": "Stop frequency, Hz",
+          "fkind": "Frequency step mode",
+          "fstep": "Frequency step, Hz or %",
+          "astart": "Start amplitude, V rms",
+          "astop": "Stop amplitude, V rms",
+          "astep": "Amplitude step, V",
+          "srate": "Time per step, s"
+        },
+        "display_values": {
+          "Start frequency, Hz": 100.0,
+          "Stop frequency, Hz": 1000.0,
+          "Frequency step mode": "Linear (Hz)",
+          "Frequency step, Hz or %": 10.0,
+          "Start amplitude, V rms": 0.1,
+          "Stop amplitude, V rms": 0.5,
+          "Amplitude step, V": 0.01,
+          "Time per step, s": 0.1
+        }
+      },
+      "Modulation": {
+        "mode": 0,
+        "values": {
+          "menable": 0.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "menable": "Enable modulation"
+        },
+        "display_values": {
+          "Enable modulation": "Off"
+        }
+      },
+      "Frequency modulation (VCO)": {
+        "mode": 0,
+        "values": {
+          "fmcenterf": 1000.0,
+          "fmspanf": 0.0,
+          "fmcenterv": 0.0,
+          "fmvspan": 0.0,
+          "fmfilter": 0.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "fmcenterf": "Center frequency, Hz",
+          "fmspanf": "Frequency span ±Hz",
+          "fmcenterv": "Center voltage, V",
+          "fmvspan": "Voltage span ±V",
+          "fmfilter": "Filter control"
+        },
+        "display_values": {
+          "Center frequency, Hz": 1000.0,
+          "Frequency span ±Hz": 0.0,
+          "Center voltage, V": 0.0,
+          "Voltage span ±V": 0.0,
+          "Filter control": 0.0
+        }
+      },
+      "Amplitude modulation": {
+        "mode": 0,
+        "values": {
+          "amsource": 0.0,
+          "amdepth": 10.0,
+          "amcenterv": 0.0,
+          "amvspan": 0.0,
+          "amfilter": 0.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "amsource": "Source",
+          "amdepth": "Modulation depth, %",
+          "amcenterv": "Center voltage, V",
+          "amvspan": "Voltage span ±V",
+          "amfilter": "Filter control"
+        },
+        "display_values": {
+          "Source": "ADC1",
+          "Modulation depth, %": 10.0,
+          "Center voltage, V": 0.0,
+          "Voltage span ±V": 0.0,
+          "Filter control": 0.0
+        }
+      },
+      "Digital Port": {
+        "mode": 0,
+        "values": {
+          "portdir": 0.0,
+          "byte": 0.0,
+          "readbyte": 0.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "portdir": "Direction mask (1 = input)",
+          "byte": "Output mask D7…D0",
+          "readbyte": "Input mask D7…D0"
+        },
+        "display_values": {
+          "Direction mask (1 = input)": 0.0,
+          "Output mask D7…D0": 0.0,
+          "Input mask D7…D0": 0.0
+        }
+      },
+      "ADCs": {
+        "mode": 0,
+        "values": {
+          "tadc": 0.0,
+          "adc1": 0.001,
+          "adc2": 0.002,
+          "adc3": 0.003,
+          "adc4": 0.004
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "tadc": "ADC trigger",
+          "adc1": "ADC1, V",
+          "adc2": "ADC2, V",
+          "adc3": "ADC3, V",
+          "adc4": "ADC4, V"
+        },
+        "display_values": {
+          "ADC trigger": "Internal (1 kHz)",
+          "ADC1, V": 0.001,
+          "ADC2, V": 0.002,
+          "ADC3, V": 0.003,
+          "ADC4, V": 0.004
+        }
+      },
+      "RS232": {
+        "mode": 0,
+        "values": {
+          "baud": 12.0,
+          "bits": 1,
+          "parity": 0,
+          "echo": false,
+          "prompt": false,
+          "delimiter": 44.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "baud": "Baud rate, bps",
+          "bits": "Data bits",
+          "parity": "Parity",
+          "echo": "Echo",
+          "prompt": "Prompt",
+          "delimiter": "Delimiter"
+        },
+        "display_values": {
+          "Baud rate, bps": "19200",
+          "Data bits": "8",
+          "Parity": "None",
+          "Echo": "Off",
+          "Prompt": "Off",
+          "Delimiter": "comma"
+        }
+      },
+      "Ref monitor / Expand": {
+        "mode": 0,
+        "values": {
+          "refmon": 0.0,
+          "expand": 0.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "refmon": "Reference on TRIG OUT",
+          "expand": "Expand ×10 (single mode)"
+        },
+        "display_values": {
+          "Reference on TRIG OUT": "Off",
+          "Expand ×10 (single mode)": "Off"
+        }
+      },
+      "Reference / Output 1": {
+        "mode": 0,
+        "values": {
+          "ie1": 0.0,
+          "frq1": 1000.0,
+          "refn1": 1.0,
+          "refp1": 0.0,
+          "sen1": 18.0,
+          "tc1": 9.0,
+          "slope1": 1.0,
+          "xof1en": 0.0,
+          "xof1val": 0.0,
+          "yof1en": 0.0,
+          "yof1val": 0.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "ie1": "Reference source",
+          "frq1": "Reference frequency, Hz",
+          "refn1": "Harmonic",
+          "refp1": "Phase, degrees",
+          "sen1": "Sensitivity",
+          "tc1": "Time constant",
+          "slope1": "Slope",
+          "xof1en": "X offset",
+          "xof1val": "X offset, % FS",
+          "yof1en": "Y offset",
+          "yof1val": "Y offset, % FS"
+        },
+        "display_values": {
+          "Reference source": "Internal",
+          "Reference frequency, Hz": 1000.0,
+          "Harmonic": 1.0,
+          "Phase, degrees": 0.0,
+          "Sensitivity": "0.001 V",
+          "Time constant": "10 ms",
+          "Slope": "12 dB/oct",
+          "X offset": "Off",
+          "X offset, % FS": 0.0,
+          "Y offset": "Off",
+          "Y offset, % FS": 0.0
+        }
+      },
+      "Reference / Output 2": {
+        "mode": 0,
+        "values": {},
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "ie2": "Reference source",
+          "frq2": "Reference frequency, Hz",
+          "refn2": "Harmonic",
+          "refp2": "Phase, degrees",
+          "sen2": "Sensitivity",
+          "tc2": "Time constant",
+          "slope2": "Slope",
+          "xof2en": "X offset",
+          "xof2val": "X offset, % FS",
+          "yof2en": "Y offset",
+          "yof2val": "Y offset, % FS"
+        },
+        "display_values": {}
+      },
+      "DACs": {
+        "mode": 0,
+        "values": {
+          "ch1": 6.0,
+          "dac1": 0.0,
+          "ch2": 6.0,
+          "dac2": 0.0,
+          "ch3": 6.0,
+          "dac3": 0.0,
+          "ch4": 6.0,
+          "dac4": 0.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "ch1": "DAC1 source",
+          "dac1": "DAC1 user voltage, V",
+          "ch2": "DAC2 source",
+          "dac2": "DAC2 user voltage, V",
+          "ch3": "DAC3 source",
+          "dac3": "DAC3 user voltage, V",
+          "ch4": "DAC4 source",
+          "dac4": "DAC4 user voltage, V",
+          "soa": "Sync oscillator amplitude, V (web SOA)"
+        },
+        "display_values": {
+          "DAC1 source": "User setting",
+          "DAC1 user voltage, V": 0.0,
+          "DAC2 source": "User setting",
+          "DAC2 user voltage, V": 0.0,
+          "DAC3 source": "User setting",
+          "DAC3 user voltage, V": 0.0,
+          "DAC4 source": "User setting",
+          "DAC4 user voltage, V": 0.0
+        }
+      },
+      "Equation 1: ((A ± B) × C) / D": {
+        "mode": 0,
+        "values": {
+          "c11": 1.0,
+          "c21": 0.0,
+          "eq1_0": 0.0,
+          "eq1_1": 1.0,
+          "eq1_2": 1.0,
+          "eq1_3": 8.0,
+          "eq1_4": 11.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "c11": "Constant C1",
+          "c21": "Constant C2",
+          "eq1_0": "A",
+          "eq1_1": "+ / −",
+          "eq1_2": "B",
+          "eq1_3": "C",
+          "eq1_4": "D"
+        },
+        "display_values": {
+          "Constant C1": 1.0,
+          "Constant C2": 0.0,
+          "A": "X1",
+          "+ / −": "+",
+          "B": "Y1",
+          "C": "C1",
+          "D": "1"
+        }
+      },
+      "Equation 2: ((A ± B) × C) / D": {
+        "mode": 0,
+        "values": {
+          "c12": 1.0,
+          "c22": 0.0,
+          "eq2_0": 0.0,
+          "eq2_1": 1.0,
+          "eq2_2": 1.0,
+          "eq2_3": 8.0,
+          "eq2_4": 11.0
+        },
+        "warnings": [],
+        "unsupported": [],
+        "field_labels": {
+          "c12": "Constant C1",
+          "c22": "Constant C2",
+          "eq2_0": "A",
+          "eq2_1": "+ / −",
+          "eq2_2": "B",
+          "eq2_3": "C",
+          "eq2_4": "D"
+        },
+        "display_values": {
+          "Constant C1": 1.0,
+          "Constant C2": 0.0,
+          "A": "X1",
+          "+ / −": "+",
+          "B": "Y1",
+          "C": "C1",
+          "D": "1"
+        }
+      }
+    }
+  },
+  "sampling": {
+    "requested_period_ms": 20.0,
+    "pair_acquisition": "Sequential MAG[1]. then PHA[1].; not a simultaneous hardware snapshot",
+    "scheduling": "Start-to-start monotonic period; missed periods skipped, never queued.",
+    "magnitude_conversion": "None; physical V/A as returned by the instrument. Sig/Bal are metadata only.",
+    "phase_conversion": "None; native instrument degrees, no unwrap or modulo conversion.",
+    "overload_samples": 0,
+    "reference_unlock_samples": 0,
+    "actual_mean_period_ms": 20.704039208695853,
+    "actual_min_period_ms": 14.33924000002662,
+    "actual_max_period_ms": 62.102875999926255
+  },
+  "requested_utc": "2026-11-02T08:29:57.048746+00:00",
+  "acquisition_started_utc": "2026-11-02T08:29:57.240200+00:00",
+  "finished_utc": "2026-11-02T08:29:59.640843+00:00",
+  "result": "complete",
+  "sample_count": 116,
+  "actual_elapsed_s": 2.4006415250000828
+}
+
+SAMPLE TIMING / STATUS
+Index	Read_start_s	Read_end_s	Status	Overload
+0	0.00012171100002	0.00772116400003	0x01	0x00
+1	0.0209505500002	0.0251543100001	0x01	0x00
+2	0.040333662	0.0445444300001	0x01	0x00
+3	0.060682709	0.0648739790001	0x01	0x00
+4	0.0810094140002	0.085219584	0x01	0x00
+5	0.100371849	0.104665528	0x01	0x00
+6	0.120810833	0.12500964	0x01	0x00
+7	0.14020549	0.144447078	0x01	0x00
+8	0.160593203	0.164796969	0x01	0x00
+9	0.180955807	0.18521396	0x01	0x00
+10	0.200361424	0.204552227	0x01	0x00
+11	0.221381123	0.227433108	0x01	0x00
+12	0.246781669	0.250975964	0x01	0x00
+13	0.261120909	0.265326976	0x01	0x00
+14	0.280460897	0.284649572	0x01	0x00
+15	0.300793278	0.304978951	0x01	0x00
+16	0.321130067	0.325365959	0x01	0x00
+17	0.340535596	0.344816748	0x01	0x00
+18	0.360439242	0.364640974	0x01	0x00
+19	0.380949484	0.385457342	0x01	0x00
+20	0.400613959	0.406540908	0x01	0x00
+21	0.420739559	0.42649543	0x01	0x00
+22	0.441562158	0.445762752	0x01	0x00
+23	0.460915523	0.46550373	0x01	0x00
+24	0.481020315	0.485514587	0x01	0x00
+25	0.500672546	0.504936484	0x01	0x00
+26	0.521092767	0.525343954	0x01	0x00
+27	0.540511001	0.54470962	0x01	0x00
+28	0.560862764	0.565059347	0x01	0x00
+29	0.580245008	0.58447146	0x01	0x00
+30	0.600662555	0.604866061	0x01	0x00
+31	0.62101325	0.625222869	0x01	0x00
+32	0.640568193	0.647949552	0x01	0x00
+33	0.661449503	0.666453771	0x01	0x00
+34	0.680607372	0.685117961	0x01	0x00
+35	0.700599095	0.704822432	0x01	0x00
+36	0.720972418	0.725229391	0x01	0x00
+37	0.740396103	0.744597792	0x01	0x00
+38	0.760749398	0.76493914	0x01	0x00
+39	0.781104775	0.785363853	0x01	0x00
+40	0.800540464	0.804746639	0x01	0x00
+41	0.821452198	0.8256532	0x01	0x00
+42	0.840803579	0.846254509	0x01	0x00
+43	0.902906455	0.907228492	0x01	0x00
+44	0.92042981	0.924633488	0x01	0x00
+45	0.940785198	0.94498717	0x01	0x00
+46	0.961402685	0.965599252	0x01	0x00
+47	0.980743356	0.984954928	0x01	0x00
+48	1.001187549	1.005400675	0x01	0x00
+49	1.020753281	1.024960706	0x01	0x00
+50	1.041131567	1.045873008	0x01	0x00
+51	1.061771279	1.066967381	0x01	0x00
+52	1.081222526	1.085412727	0x01	0x00
+53	1.101185505	1.105601836	0x01	0x00
+54	1.120804979	1.125024031	0x01	0x00
+55	1.140241427	1.144464102	0x01	0x00
+56	1.160625751	1.164821636	0x01	0x00
+57	1.180983838	1.185547042	0x01	0x00
+58	1.200696076	1.204903724	0x01	0x00
+59	1.221070877	1.225310282	0x01	0x00
+60	1.240514391	1.244865107	0x01	0x00
+61	1.261023796	1.265220568	0x01	0x00
+62	1.280367433	1.284576592	0x01	0x00
+63	1.300766564	1.304979827	0x01	0x00
+64	1.3211408	1.325547476	0x01	0x00
+65	1.340724602	1.345089496	0x01	0x00
+66	1.360235902	1.364514692	0x01	0x00
+67	1.380819393	1.385019396	0x01	0x00
+68	1.400239655	1.404475676	0x01	0x00
+69	1.420808616	1.425052078	0x01	0x00
+70	1.440222386	1.444468708	0x01	0x00
+71	1.460669576	1.465304647	0x01	0x00
+72	1.480703655	1.536928584	0x01	0x00
+73	1.54110675	1.545351587	0x01	0x00
+74	1.56050904	1.564693431	0x01	0x00
+75	1.580846868	1.585038254	0x01	0x00
+76	1.600216261	1.604452438	0x01	0x00
+77	1.620623032	1.624824211	0x01	0x00
+78	1.641016838	1.645221021	0x01	0x00
+79	1.660368645	1.664565581	0x01	0x00
+80	1.680728332	1.685607448	0x01	0x00
+81	1.700863488	1.70530942	0x01	0x00
+82	1.720447995	1.72467345	0x01	0x00
+83	1.740835741	1.745039567	0x01	0x00
+84	1.760192571	1.764451787	0x01	0x00
+85	1.780581331	1.784737567	0x01	0x00
+86	1.800885284	1.805060256	0x01	0x00
+87	1.8202243	1.82441137	0x01	0x00
+88	1.840555608	1.844751247	0x01	0x00
+89	1.860907613	1.865102785	0x01	0x00
+90	1.880250014	1.884749923	0x01	0x00
+91	1.90092383	1.905116527	0x01	0x00
+92	1.920297722	1.924581279	0x01	0x00
+93	1.940717578	1.944921541	0x01	0x00
+94	1.961067281	1.965310314	0x01	0x00
+95	1.980454257	1.984834189	0x01	0x00
+96	2.000984829	2.005215246	0x01	0x00
+97	2.020468127	2.024654245	0x01	0x00
+98	2.040800898	2.0453552	0x01	0x00
+99	2.060498887	2.064690555	0x01	0x00
+100	2.080826242	2.085010528	0x01	0x00
+101	2.100150351	2.104332777	0x01	0x00
+102	2.12048352	2.124674187	0x01	0x00
+103	2.140851313	2.145060686	0x01	0x00
+104	2.160234553	2.164420888	0x01	0x00
+105	2.180578948	2.184806007	0x01	0x00
+106	2.200946243	2.205137388	0x01	0x00
+107	2.220300943	2.224538863	0x01	0x00
+108	2.240669898	2.244855374	0x01	0x00
+109	2.261009375	2.265204763	0x01	0x00
+110	2.280337626	2.284578686	0x01	0x00
+111	2.300706799	2.304893888	0x01	0x00
+112	2.321040126	2.325245309	0x01	0x00
+113	2.340385987	2.344570251	0x01	0x00
+114	2.360704121	2.364916886	0x01	0x00
+115	2.38108622	2.385459928	0x01	0x00
